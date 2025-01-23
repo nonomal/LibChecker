@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.pm.PackageParser
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.window.embedding.RuleController
 import androidx.window.embedding.SplitController
 import coil.Coil
@@ -55,7 +56,7 @@ class LibCheckerApp : Application() {
     } else {
       Timber.plant(ReleaseTree())
 
-      if (GlobalValues.isAnonymousAnalyticsEnabled.value == true) {
+      if (GlobalValues.isAnonymousAnalyticsEnabled) {
         AppCenter.start(
           this,
           BuildConfig.APP_CENTER_SECRET,
@@ -75,6 +76,9 @@ class LibCheckerApp : Application() {
     )
     Utility.init(this)
     LocaleDelegate.defaultLocale = GlobalValues.locale
+    if (OsUtils.atLeastT()) {
+      AppCompatDelegate.setApplicationLocales(LocaleListCompat.create(GlobalValues.locale))
+    }
     AppCompatDelegate.setDefaultNightMode(UiUtils.getNightMode())
     Once.initialise(this)
     Repositories.init(this)

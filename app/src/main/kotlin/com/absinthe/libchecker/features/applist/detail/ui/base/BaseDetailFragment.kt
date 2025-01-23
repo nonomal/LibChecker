@@ -1,7 +1,9 @@
 package com.absinthe.libchecker.features.applist.detail.ui.base
 
 import android.content.Context
+import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -16,12 +18,10 @@ import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.ACTIVITY
 import com.absinthe.libchecker.annotation.NATIVE
 import com.absinthe.libchecker.annotation.PERMISSION
-import com.absinthe.libchecker.annotation.PROVIDER
-import com.absinthe.libchecker.annotation.RECEIVER
-import com.absinthe.libchecker.annotation.SERVICE
+import com.absinthe.libchecker.annotation.isComponentType
 import com.absinthe.libchecker.compat.VersionCompat
+import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.features.applist.DetailFragmentManager
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.MODE_SORT_BY_LIB
 import com.absinthe.libchecker.features.applist.Referable
 import com.absinthe.libchecker.features.applist.Sortable
@@ -43,7 +43,6 @@ import com.absinthe.libchecker.integrations.monkeyking.ShareCmpInfo
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
 import com.absinthe.libchecker.ui.base.BaseFragment
 import com.absinthe.libchecker.utils.extensions.addPaddingTop
-import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
 import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.launchLibReferencePage
 import com.absinthe.libchecker.utils.extensions.reverseStrikeThroughAnimation
@@ -66,7 +65,9 @@ import timber.log.Timber
 
 const val EXTRA_TYPE = "EXTRA_TYPE"
 
-abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable {
+abstract class BaseDetailFragment<T : ViewBinding> :
+  BaseFragment<T>(),
+  Sortable {
 
   protected val viewModel: DetailViewModel by activityViewModels()
   protected val packageName by lazy { arguments?.getString(EXTRA_PACKAGE_NAME).orEmpty() }
@@ -96,9 +97,21 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
   private var integrationBlockerList: List<ShareCmpInfo.Component>? = null
 
   abstract fun getRecyclerView(): RecyclerView
-  abstract fun getFilterListByText(text: String): List<LibStringItemChip>?
 
   protected abstract val needShowLibDetailDialog: Boolean
+
+  protected abstract suspend fun getItems(): List<LibStringItemChip>
+  protected abstract fun onItemsAvailable(items: List<LibStringItemChip>)
+
+  override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    lifecycleScope.launch(Dispatchers.IO) {
+      val items = getItems()
+      withContext(Dispatchers.Main) {
+        onItemsAvailable(items)
+      }
+    }
+  }
 
   override fun onAttach(context: Context) {
     super.onAttach(context)
@@ -121,7 +134,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
         doOnLongClick(context, getItem(position), position)
         true
       }
-      setProcessMode(viewModel.processMode)
+      setProcessMode(GlobalValues.processMode)
     }
   }
 
@@ -138,12 +151,12 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
     super.onVisibilityChanged(visible)
     if (visible) {
       if (this is ComponentsAnalysisFragment && viewModel.processesMap.isNotEmpty()) {
-        viewModel.processToolIconVisibilityLiveData.postValue(isComponentFragment())
+        viewModel.updateProcessToolIconVisibility(isComponentFragment())
       } else {
         if (this is NativeAnalysisFragment && viewModel.nativeSourceMap.isNotEmpty()) {
-          viewModel.processToolIconVisibilityLiveData.postValue(true)
+          viewModel.updateProcessToolIconVisibility(true)
         } else {
-          viewModel.processToolIconVisibilityLiveData.postValue(false)
+          viewModel.updateProcessToolIconVisibility(false)
         }
       }
     }
@@ -160,14 +173,14 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
         null
       }
 
-    if (viewModel.sortMode == MODE_SORT_BY_LIB) {
+    if (GlobalValues.libSortMode == MODE_SORT_BY_LIB) {
       if (type == NATIVE) {
         list.sortByDescending { it.item.size }
       } else {
         list.sortByDescending { it.item.name }
       }
     } else {
-      list.sortWith(compareByDescending<LibStringItemChip> { it.chip != null }.thenBy { it.item.name })
+      list.sortWith(compareByDescending<LibStringItemChip> { it.rule != null }.thenBy { it.item.name })
     }
 
     if (itemChip != null) {
@@ -180,29 +193,52 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
     }
   }
 
-  override fun filterList(text: String) {
-    adapter.highlightText = text
-    getFilterListByText(text)?.let {
+  fun sortedList(origin: MutableList<LibStringItemChip>): MutableList<LibStringItemChip> {
+    if (GlobalValues.libSortMode == MODE_SORT_BY_LIB) {
+      if (type == NATIVE) {
+        origin.sortByDescending { it.item.size }
+      } else {
+        origin.sortByDescending { it.item.name }
+      }
+    } else {
+      origin.sortWith(compareByDescending<LibStringItemChip> { it.rule != null }.thenBy { it.item.name })
+    }
+    return origin
+  }
+
+  protected open suspend fun getFilterList(
+    searchWords: String?,
+    process: String?
+  ): List<LibStringItemChip>? {
+    return getItems().asSequence()
+      .filter { searchWords == null || it.item.name.contains(searchWords, true) || it.item.source?.contains(searchWords, true) == true }
+      .filter { process == null || it.item.process == process }
+      .toList()
+  }
+
+  override suspend fun setItemsWithFilter(searchWords: String?, process: String?) {
+    adapter.highlightText = searchWords.orEmpty()
+    getFilterList(searchWords, process)?.let {
+      val sortedList = sortedList(it.toMutableList())
       lifecycleScope.launch(Dispatchers.Main) {
-        if (it.isEmpty()) {
+        if (isDetached || !isBindingInitialized()) return@launch
+        if (sortedList.isEmpty()) {
           if (getRecyclerView().itemDecorationCount > 0) {
             getRecyclerView().removeItemDecoration(dividerItemDecoration)
           }
           emptyView.text.text = getString(R.string.empty_list)
-        }
-        adapter.setDiffNewData(it.toMutableList()) {
-          viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-          viewModel.itemsCountList[type] = it.size
-          doOnMainThreadIdle {
-            //noinspection NotifyDataSetChanged
-            adapter.notifyDataSetChanged()
+        } else {
+          if (getRecyclerView().itemDecorationCount == 0) {
+            getRecyclerView().addItemDecoration(dividerItemDecoration)
           }
+        }
+        adapter.setDiffNewData(sortedList) {
+          afterListReadyTask?.run()
+          viewModel.updateItemsCountStateFlow(type, sortedList.size)
         }
       }
     }
   }
-
-  fun getItemsCount() = adapter.itemCount
 
   fun switchProcessMode() {
     if (isComponentFragment() || isNativeSourceAvailable()) {
@@ -218,23 +254,6 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
         }
       }
       DetailFragmentManager.resetNavigationParams()
-    } else {
-      afterListReadyTask = Runnable {
-        lifecycleScope.launch(Dispatchers.IO) {
-          viewModel.queriedText?.let {
-            if (it.isNotEmpty()) {
-              filterList(it)
-            }
-          }
-          if (this@BaseDetailFragment is BaseFilterAnalysisFragment) {
-            viewModel.queriedProcess?.let {
-              if (it.isNotEmpty()) {
-                filterItems(it)
-              }
-            }
-          }
-        }
-      }
     }
   }
 
@@ -248,6 +267,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
     }
 
     Timber.d("navigateToComponent: componentPosition = $componentPosition")
+    (activity as? IDetailContainer)?.collapseAppBar()
     getRecyclerView().scrollToPosition(componentPosition.coerceAtMost(adapter.itemCount - 1))
 
     with(getRecyclerView().layoutManager) {
@@ -269,7 +289,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
     }
     val item = adapter.getItem(position)
     val name = item.item.name
-    val isValidLib = item.chip != null
+    val isValidLib = item.rule != null
 
     if (adapter.type == PERMISSION) {
       PermissionDetailDialogFragment.newInstance(name)
@@ -288,7 +308,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
   }
 
   fun isComponentFragment(): Boolean {
-    return type == ACTIVITY || type == SERVICE || type == RECEIVER || type == PROVIDER
+    return isComponentType(type)
   }
 
   fun isNativeSourceAvailable(): Boolean {
@@ -296,7 +316,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
   }
 
   protected fun hasNonGrantedPermissions(): Boolean {
-    return type == PERMISSION && (viewModel.permissionsItems.value?.any { it.item.size == 0L } == true)
+    return type == PERMISSION && viewModel.permissionsItems.value?.any { it.item.size == 0L } == true
   }
 
   private fun doOnLongClick(context: Context, item: LibStringItemChip, position: Int) {
@@ -324,7 +344,7 @@ abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>(), Sortable
       // Reference
       arrayAdapter.add(getString(R.string.tab_lib_reference_statistics))
       actionMap[arrayAdapter.count - 1] = {
-        activity?.launchLibReferencePage(componentName, item.chip?.name, type, null)
+        activity?.launchLibReferencePage(componentName, item.rule?.label, type, null)
       }
 
       // Blocker

@@ -17,20 +17,16 @@ import rikka.core.util.ClipboardUtils
 
 const val EXTRA_SIGNATURE_DETAIL = "EXTRA_SIGNATURE_DETAIL"
 
-class SignatureDetailBSDFragment :
-  BaseBottomSheetViewDialogFragment<SignatureDetailBottomSheetView>() {
+class SignatureDetailBSDFragment : BaseBottomSheetViewDialogFragment<SignatureDetailBottomSheetView>() {
 
   private val detail by unsafeLazy { arguments?.getString(EXTRA_SIGNATURE_DETAIL).orEmpty() }
 
-  override fun initRootView(): SignatureDetailBottomSheetView =
-    SignatureDetailBottomSheetView(requireContext())
+  override fun initRootView(): SignatureDetailBottomSheetView = SignatureDetailBottomSheetView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.67).toInt()
-    }
+    maxPeekHeightPercentage = 0.67f
     root.adapter.setOnItemLongClickListener { _, _, _ ->
       ClipboardUtils.put(requireContext(), detail)
       VersionCompat.showCopiedOnClipboardToast(requireContext())

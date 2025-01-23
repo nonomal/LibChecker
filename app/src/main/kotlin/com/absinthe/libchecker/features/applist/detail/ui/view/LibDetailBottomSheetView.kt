@@ -2,12 +2,15 @@ package com.absinthe.libchecker.features.applist.detail.ui.view
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TableLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.text.HtmlCompat
@@ -15,8 +18,16 @@ import androidx.core.view.children
 import androidx.core.view.marginStart
 import androidx.core.view.marginTop
 import androidx.core.widget.TextViewCompat
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.api.ApiManager
+import com.absinthe.libchecker.api.bean.LibDetailBean
+import com.absinthe.libchecker.constant.GlobalValues
+import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibDetailItemAdapter
+import com.absinthe.libchecker.features.applist.detail.ui.adapter.node.LibDetailItem
+import com.absinthe.libchecker.ui.adapter.VerticalSpacesItemDecoration
+import com.absinthe.libchecker.ui.app.BottomSheetRecyclerView
+import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.getColor
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.absinthe.libchecker.utils.extensions.getResourceIdByAttr
@@ -27,13 +38,18 @@ import com.absinthe.libraries.utils.view.BottomSheetHeaderView
 import com.absinthe.libraries.utils.view.HeightAnimatableViewFlipper
 import com.airbnb.lottie.LottieAnimationView
 import com.airbnb.lottie.LottieDrawable
+import com.google.android.material.tabs.TabLayout
+import java.io.File
+import java.util.Locale
 import timber.log.Timber
 
-class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderView {
+class LibDetailBottomSheetView(context: Context) :
+  LinearLayout(context),
+  IHeaderView {
 
   private val header = BottomSheetHeaderView(context).apply {
     layoutParams =
-      LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+      LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     title.text = context.getString(R.string.lib_detail_dialog_title)
   }
 
@@ -52,8 +68,8 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
     )
   ).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.WRAP_CONTENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.WRAP_CONTENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 4.dp
     }
@@ -63,7 +79,7 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
 
   private val viewFlipper = HeightAnimatableViewFlipper(context).apply {
     layoutParams =
-      LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+      LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     setInAnimation(context, R.anim.anim_fade_in)
     setOutAnimation(context, R.anim.anim_fade_out)
   }
@@ -72,9 +88,9 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
     layoutParams = FrameLayout.LayoutParams(200.dp, 200.dp).also {
       it.gravity = Gravity.CENTER
     }
-    imageAssetsFolder = "/"
+    imageAssetsFolder = File.separator
     repeatCount = LottieDrawable.INFINITE
-    setAnimation("anim/lib_detail_rocket.json")
+    setAnimation("anim/lib_detail_rocket.json.zip")
   }
 
   private val notFoundView = NotFoundView(context).apply {
@@ -86,14 +102,53 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
     }
   }
 
-  val libDetailContentView = LibDetailContentView(context).apply {
+  private var lastSelectedTabPosition = -1
+  private val tabLayout = TabLayout(context).apply {
+    layoutParams = TableLayout.LayoutParams(
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
+    )
+    tabMode = TabLayout.MODE_SCROLLABLE
+    setBackgroundColor(Color.TRANSPARENT)
+    addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+      override fun onTabSelected(tab: TabLayout.Tab?) {
+        tab?.let {
+          val libDetailData = libDetailBean?.data?.get(it.position) ?: return
+          if (lastSelectedTabPosition >= 0) {
+            GlobalValues.preferredRuleLanguage = libDetailData.locale
+          }
+          lastSelectedTabPosition = it.position
+          setContent(libDetailData)
+        }
+      }
+
+      override fun onTabUnselected(tab: TabLayout.Tab?) {}
+      override fun onTabReselected(tab: TabLayout.Tab?) {}
+    })
+  }
+
+  private val contentAdapter = LibDetailItemAdapter().apply {
+    addHeaderView(tabLayout)
+  }
+
+  private val libDetailContentView = BottomSheetRecyclerView(context).apply {
     layoutParams = FrameLayout.LayoutParams(
       FrameLayout.LayoutParams.MATCH_PARENT,
       FrameLayout.LayoutParams.WRAP_CONTENT
     )
+    adapter = contentAdapter
+    overScrollMode = OVER_SCROLL_NEVER
+    layoutManager = LinearLayoutManager(context)
+    isVerticalScrollBarEnabled = false
+    clipToPadding = false
+    clipChildren = false
+    isNestedScrollingEnabled = false
+    addItemDecoration(VerticalSpacesItemDecoration(4.dp))
   }
 
   init {
+    orientation = VERTICAL
+    gravity = Gravity.CENTER_HORIZONTAL
     val padding = 16.dp
     setPadding(
       padding,
@@ -113,34 +168,6 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     loading.playAnimation()
-  }
-
-  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-    header.measure(
-      (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-      header.defaultHeightMeasureSpec(this)
-    )
-    icon.autoMeasure()
-    title.measure(
-      (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-      title.defaultHeightMeasureSpec(this)
-    )
-    viewFlipper.measure(
-      (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-      viewFlipper.defaultHeightMeasureSpec(this)
-    )
-    setMeasuredDimension(
-      measuredWidth,
-      paddingTop + paddingBottom + header.measuredHeight + title.measuredHeight + icon.measuredHeight + title.marginTop + icon.marginTop + viewFlipper.measuredHeight + 16.dp
-    )
-  }
-
-  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-    header.layout(paddingStart, paddingTop)
-    icon.layout(icon.toHorizontalCenter(this), header.bottom + icon.marginTop)
-    title.layout(title.toHorizontalCenter(this), icon.bottom + title.marginTop)
-    viewFlipper.layout(paddingStart, title.bottom.coerceAtLeast(icon.bottom) + 16.dp)
   }
 
   override fun getHeaderView(): BottomSheetHeaderView {
@@ -187,7 +214,8 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
       children.forEach {
         it.autoMeasure()
       }
-      val textWidth = measuredWidth - paddingStart - paddingEnd - icon.measuredWidth - tip.marginStart
+      val textWidth =
+        measuredWidth - paddingStart - paddingEnd - icon.measuredWidth - tip.marginStart
       if (tip.measuredWidth > textWidth) {
         tip.measure(textWidth.toExactlyMeasureSpec(), tip.defaultHeightMeasureSpec(this))
       }
@@ -274,129 +302,72 @@ class LibDetailBottomSheetView(context: Context) : AViewGroup(context), IHeaderV
     }
   }
 
-  class LibDetailContentView(context: Context) : AViewGroup(context) {
+  private var libDetailBean: LibDetailBean? = null
 
-    val label = LibDetailItemView(context).apply {
-      layoutParams = LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-      )
-      icon.setImageResource(R.drawable.ic_label)
-      tip.text = context.getString(R.string.lib_detail_label_tip)
-      text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2))
-    }
-
-    val team = LibDetailItemView(context).apply {
-      layoutParams = LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-      )
-      icon.setImageResource(R.drawable.ic_team)
-      tip.text = context.getString(R.string.lib_detail_develop_team_tip)
-      text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2))
-    }
-
-    val contributor = LibDetailItemView(context).apply {
-      layoutParams = LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-      )
-      icon.setImageResource(R.drawable.ic_github)
-      tip.text = context.getString(R.string.lib_detail_rule_contributors_tip)
-      text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2))
-    }
-
-    val description = LibDetailItemView(context).apply {
-      layoutParams = LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-      )
-      icon.setImageResource(R.drawable.ic_content)
-      tip.text = context.getString(R.string.lib_detail_description_tip)
-      text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2))
-    }
-
-    val relativeLink = LibDetailItemView(context).apply {
-      layoutParams = LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-      )
-      icon.setImageResource(R.drawable.ic_url)
-      tip.text = context.getString(R.string.lib_detail_relative_link_tip)
-      text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2))
-    }
-
-    private var updatedTime: LibDetailItemView? = null
-
-    init {
-      addView(label)
-      addView(team)
-      addView(contributor)
-      addView(description)
-      addView(relativeLink)
-    }
-
-    fun setUpdatedTime(time: String) {
-      if (updatedTime == null) {
-        updatedTime = LibDetailItemView(context).apply {
-          layoutParams = LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-          )
-          icon.setImageResource(R.drawable.ic_time)
-          tip.text = context.getString(R.string.lib_detail_last_update_tip)
-          text.setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2))
-        }
-        addView(updatedTime)
+  fun setLibDetailBean(libDetailBean: LibDetailBean) {
+    this.libDetailBean = libDetailBean
+    if (tabLayout.tabCount == 0) {
+      libDetailBean.data.forEach {
+        tabLayout.addTab(tabLayout.newTab().setText(Locale.forLanguageTag(it.locale).displayName))
       }
-      updatedTime!!.text.text = time
     }
 
-    private val marginVertical = 8.dp
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-      super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-      label.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        label.defaultHeightMeasureSpec(this)
-      )
-      team.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        team.defaultHeightMeasureSpec(this)
-      )
-      contributor.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        contributor.defaultHeightMeasureSpec(this)
-      )
-      description.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        description.defaultHeightMeasureSpec(this)
-      )
-      relativeLink.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        relativeLink.defaultHeightMeasureSpec(this)
-      )
-      updatedTime?.measure(
-        (measuredWidth - paddingStart - paddingEnd).toExactlyMeasureSpec(),
-        updatedTime!!.defaultHeightMeasureSpec(this)
-      )
-      val updatedTimeHeight = updatedTime?.let { it.measuredHeight + marginVertical } ?: 0
-      setMeasuredDimension(
-        measuredWidth,
-        label.measuredHeight + team.measuredHeight +
-          contributor.measuredHeight + description.measuredHeight +
-          relativeLink.measuredHeight + updatedTimeHeight + marginVertical * 4
-      )
+    var index = 0
+    for (i in libDetailBean.data.indices) {
+      if (libDetailBean.data[i].locale == GlobalValues.preferredRuleLanguage) {
+        index = i
+        break
+      }
     }
+    tabLayout.selectTab(tabLayout.getTabAt(index))
+    setContent(libDetailBean.data[index])
+  }
 
-    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-      label.layout(0, 0)
-      team.layout(0, label.bottom + marginVertical)
-      contributor.layout(0, team.bottom + marginVertical)
-      description.layout(0, contributor.bottom + marginVertical)
-      relativeLink.layout(0, description.bottom + marginVertical)
-      updatedTime?.layout(0, relativeLink.bottom + marginVertical)
-    }
+  private fun setContent(ruleBean: LibDetailBean.Data) {
+    val list = listOf(
+      LibDetailItem(
+        iconRes = R.drawable.ic_label,
+        tipRes = R.string.lib_detail_label_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2),
+        text = ruleBean.data.label
+      ),
+      LibDetailItem(
+        iconRes = R.drawable.ic_team,
+        tipRes = R.string.lib_detail_develop_team_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2),
+        text = ruleBean.data.dev_team
+      ),
+      LibDetailItem(
+        iconRes = R.drawable.ic_github,
+        tipRes = R.string.lib_detail_rule_contributors_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceSubtitle2),
+        text = ruleBean.data.rule_contributors.joinToString(separator = ", ")
+      ),
+      LibDetailItem(
+        iconRes = R.drawable.ic_content,
+        tipRes = R.string.lib_detail_description_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2),
+        text = ruleBean.data.description
+      ),
+      LibDetailItem(
+        iconRes = R.drawable.ic_url,
+        tipRes = R.string.lib_detail_relative_link_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2),
+        text = "<a href='${ruleBean.data.source_link}'> ${ruleBean.data.source_link} </a>"
+      )
+    )
+    contentAdapter.setList(list)
+  }
+
+  fun setUpdateTIme(time: String) {
+    contentAdapter.addData(
+      LibDetailItem(
+        iconRes = R.drawable.ic_time,
+        tipRes = R.string.lib_detail_last_update_tip,
+        textStyleRes = context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceBody2),
+        text = time
+      )
+    )
   }
 
   fun showContent() {

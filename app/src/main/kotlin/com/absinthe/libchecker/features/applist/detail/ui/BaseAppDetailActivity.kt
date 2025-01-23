@@ -32,7 +32,6 @@ import androidx.viewpager2.widget.ViewPager2
 import coil.load
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.ACTIVITY
-import com.absinthe.libchecker.annotation.DEX
 import com.absinthe.libchecker.annotation.METADATA
 import com.absinthe.libchecker.annotation.NATIVE
 import com.absinthe.libchecker.annotation.PERMISSION
@@ -62,7 +61,6 @@ import com.absinthe.libchecker.features.applist.detail.ui.adapter.ProcessBarAdap
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.node.AbiLabelNode
 import com.absinthe.libchecker.features.applist.detail.ui.impl.AbilityAnalysisFragment
 import com.absinthe.libchecker.features.applist.detail.ui.impl.ComponentsAnalysisFragment
-import com.absinthe.libchecker.features.applist.detail.ui.impl.DexAnalysisFragment
 import com.absinthe.libchecker.features.applist.detail.ui.impl.MetaDataAnalysisFragment
 import com.absinthe.libchecker.features.applist.detail.ui.impl.NativeAnalysisFragment
 import com.absinthe.libchecker.features.applist.detail.ui.impl.PermissionAnalysisFragment
@@ -89,6 +87,7 @@ import com.absinthe.libchecker.utils.extensions.getPermissionsList
 import com.absinthe.libchecker.utils.extensions.getTargetApiString
 import com.absinthe.libchecker.utils.extensions.getVersionCode
 import com.absinthe.libchecker.utils.extensions.getVersionString
+import com.absinthe.libchecker.utils.extensions.isKeyboardShowing
 import com.absinthe.libchecker.utils.extensions.setLongClickCopiedToClipboard
 import com.absinthe.libchecker.utils.extensions.unsafeLazy
 import com.absinthe.libchecker.utils.harmony.ApplicationDelegate
@@ -139,20 +138,23 @@ abstract class BaseAppDetailActivity :
     super.onCreate(savedInstanceState)
     addMenuProvider(this, this, Lifecycle.State.STARTED)
     setSupportActionBar(getToolbar())
+    binding.toolbar.isBackInvokedCallbackEnabled = false
     supportActionBar?.apply {
       setDisplayHomeAsUpEnabled(true)
       setDisplayShowHomeEnabled(true)
     }
     onBackPressedDispatcher.addBackStateHandler(
       lifecycleOwner = this,
-      enabledState = { binding.toolbar.hasExpandedActionView() },
+      enabledState = { !isKeyboardShowing() && binding.toolbar.hasExpandedActionView() },
       handler = { binding.toolbar.collapseActionView() }
     )
   }
 
   protected fun onPackageInfoAvailable(packageInfo: PackageInfo, extraBean: DetailExtraBean?) {
     viewModel.packageInfo = packageInfo
-    viewModel.packageInfoLiveData.postValue(packageInfo)
+    lifecycleScope.launch {
+      viewModel.packageInfoStateFlow.emit(packageInfo)
+    }
     binding.apply {
       try {
         supportActionBar?.title = null
@@ -172,7 +174,9 @@ abstract class BaseAppDetailActivity :
               false,
               this@BaseAppDetailActivity
             )
-            load(appIconLoader.loadIcon(packageInfo.applicationInfo))
+            packageInfo.applicationInfo?.let { appInfo ->
+              load(appIconLoader.loadIcon(appInfo))
+            }
             if (!apkAnalyticsMode || PackageUtils.isAppInstalled(packageInfo.packageName)) {
               setOnClickListener {
                 if (AntiShakeUtils.isInvalidClick(it)) {
@@ -215,7 +219,7 @@ abstract class BaseAppDetailActivity :
             scale(0.8f) {
               append(" Min: ")
             }
-            append(packageInfo.applicationInfo.minSdkVersion.toString())
+            append(packageInfo.applicationInfo?.minSdkVersion.toString())
             scale(0.8f) {
               append(" Compile: ")
             }
@@ -223,7 +227,7 @@ abstract class BaseAppDetailActivity :
             scale(0.8f) {
               append(" Size: ")
             }
-            var baseApkSize = FileUtils.getFileSize(packageInfo.applicationInfo.sourceDir)
+            var baseApkSize = FileUtils.getFileSize(packageInfo.applicationInfo!!.sourceDir)
             val baseFormattedApkSize = Formatter.formatFileSize(this@BaseAppDetailActivity, baseApkSize)
             val splitApkSizeList = PackageUtils.getSplitsSourceDir(packageInfo)
               ?.map {
@@ -292,13 +296,12 @@ abstract class BaseAppDetailActivity :
       toolbarAdapter.addData(
         AppDetailToolbarItem(R.drawable.ic_lib_sort, R.string.menu_sort) {
           lifecycleScope.launch {
-            detailFragmentManager.sortAll()
-            viewModel.sortMode = if (viewModel.sortMode == MODE_SORT_BY_LIB) {
+            GlobalValues.libSortMode = if (GlobalValues.libSortMode == MODE_SORT_BY_LIB) {
               MODE_SORT_BY_SIZE
             } else {
               MODE_SORT_BY_LIB
             }
-            detailFragmentManager.changeSortMode(viewModel.sortMode)
+            detailFragmentManager.sortAll()
           }
         }
       )
@@ -370,7 +373,7 @@ abstract class BaseAppDetailActivity :
         PROVIDER,
         PERMISSION,
         METADATA,
-        DEX,
+        // DEX,
         SIGNATURES
       )
     } else {
@@ -380,7 +383,7 @@ abstract class BaseAppDetailActivity :
         AbilityType.SERVICE,
         AbilityType.WEB,
         AbilityType.DATA,
-        DEX,
+        // DEX,
         SIGNATURES
       )
     }
@@ -393,7 +396,7 @@ abstract class BaseAppDetailActivity :
         getText(R.string.ref_category_cp),
         getText(R.string.ref_category_perm),
         getText(R.string.ref_category_metadata),
-        getText(R.string.ref_category_dex),
+        // getText(R.string.ref_category_dex),
         getText(R.string.ref_category_signatures)
       )
     } else {
@@ -403,12 +406,12 @@ abstract class BaseAppDetailActivity :
         getText(R.string.ability_service),
         getText(R.string.ability_web),
         getText(R.string.ability_data),
-        getText(R.string.ref_category_dex),
+        // getText(R.string.ref_category_dex),
         getText(R.string.ref_category_signatures)
       )
     }
 
-    if (packageInfo.applicationInfo.sharedLibraryFiles?.isNotEmpty() == true) {
+    if (packageInfo.applicationInfo?.sharedLibraryFiles?.isNotEmpty() == true) {
       lifecycleScope.launch(Dispatchers.IO) {
         try {
           val libs = runCatching {
@@ -441,11 +444,17 @@ abstract class BaseAppDetailActivity :
         override fun createFragment(position: Int): Fragment {
           return when (val type = typeList[position]) {
             NATIVE -> NativeAnalysisFragment.newInstance(packageInfo.packageName)
+
             STATIC -> StaticAnalysisFragment.newInstance(packageInfo.packageName)
+
             PERMISSION -> PermissionAnalysisFragment.newInstance(packageInfo.packageName)
+
             METADATA -> MetaDataAnalysisFragment.newInstance(packageInfo.packageName)
-            DEX -> DexAnalysisFragment.newInstance(packageInfo.packageName)
+
+            // DEX -> DexAnalysisFragment.newInstance(packageInfo.packageName)
+
             SIGNATURES -> SignaturesAnalysisFragment.newInstance(packageInfo.packageName)
+
             else -> if (!isHarmonyMode) {
               ComponentsAnalysisFragment.newInstance(type)
             } else {
@@ -493,13 +502,13 @@ abstract class BaseAppDetailActivity :
     mediator.attach()
 
     viewModel.also {
-      it.itemsCountLiveData.observe(this) { live ->
+      it.itemsCountStateFlow.onEach { live ->
         if (detailFragmentManager.currentItemsCount != live.count && typeList[binding.tabLayout.selectedTabPosition] == live.locate) {
           binding.tsComponentCount.setText(live.count.toString())
           detailFragmentManager.currentItemsCount = live.count
         }
-      }
-      it.processToolIconVisibilityLiveData.observe(this) { visible ->
+      }.launchIn(lifecycleScope)
+      it.processToolIconVisibilityStateFlow.onEach { visible ->
         if (visible) {
           if (detailFragmentManager.currentFragment?.isComponentFragment() == true) {
             if (!toolbarAdapter.data.contains(toolbarProcessItem)) {
@@ -527,8 +536,8 @@ abstract class BaseAppDetailActivity :
             processBarView?.isGone = true
           }
         }
-      }
-      it.processMapLiveData.observe(this) { map ->
+      }.launchIn(lifecycleScope)
+      it.processMapStateFlow.onEach { map ->
         if (processBarView == null) {
           initProcessBarView()
         }
@@ -541,7 +550,7 @@ abstract class BaseAppDetailActivity :
           }
         )
         showProcessBarView()
-      }
+      }.launchIn(lifecycleScope)
       it.featuresFlow.onEach { feat ->
         initFeatureListView()
 
@@ -549,7 +558,7 @@ abstract class BaseAppDetailActivity :
           Features.SPLIT_APKS -> {
             featureAdapter.addData(
               FeatureItem(R.drawable.ic_aab) {
-                FeaturesDialog.showSplitApksDialog(this, packageInfo.packageName)
+                FeaturesDialog.showSplitApksDialog(this, packageInfo)
               }
             )
           }
@@ -557,7 +566,7 @@ abstract class BaseAppDetailActivity :
           Features.KOTLIN_USED -> {
             featureAdapter.addData(
               FeatureItem(com.absinthe.lc.rulesbundle.R.drawable.ic_lib_kotlin) {
-                FeaturesDialog.showKotlinDialog(this, feat.version)
+                FeaturesDialog.showKotlinDialog(this, feat.extras)
               }
             )
           }
@@ -627,6 +636,14 @@ abstract class BaseAppDetailActivity :
             )
           }
 
+          Features.KMP -> {
+            featureAdapter.addData(
+              FeatureItem(R.drawable.ic_jetbrain_kmp) {
+                FeaturesDialog.showKMPDialog(this, feat.version)
+              }
+            )
+          }
+
           Features.Ext.APPLICATION_PROP -> {
             featureAdapter.addData(
               FeatureItem(R.drawable.ic_app_prop) {
@@ -644,9 +661,17 @@ abstract class BaseAppDetailActivity :
               )
             }
           }
+
+          Features.Ext.ELF_PAGE_SIZE_16KB -> {
+            featureAdapter.addData(
+              FeatureItem(R.drawable.ic_16kb_align) {
+                FeaturesDialog.show16KBAlignDialog(this)
+              }
+            )
+          }
         }
       }.launchIn(lifecycleScope)
-      it.abiBundle.observe(this) { bundle ->
+      it.abiBundleStateFlow.onEach { bundle ->
         if (bundle != null) {
           initAbiView(bundle.abi, bundle.abiSet)
 
@@ -681,7 +706,7 @@ abstract class BaseAppDetailActivity :
           }
           binding.detailsTitle.postDelayed(action, 500)
         }
-      }
+      }.launchIn(lifecycleScope)
     }
 
     if (featureListView == null) {
@@ -741,8 +766,12 @@ abstract class BaseAppDetailActivity :
 
   override fun onQueryTextChange(newText: String): Boolean {
     viewModel.queriedText = newText
-    detailFragmentManager.deliverFilterItemsByText(newText)
+    detailFragmentManager.deliverFilterItemsByText(newText, lifecycleScope)
     return false
+  }
+
+  override fun collapseAppBar() {
+    binding.headerLayout.setExpanded(false, true)
   }
 
   private fun initFeatureListView(): Boolean {
@@ -781,33 +810,32 @@ abstract class BaseAppDetailActivity :
   private val toolbarProcessItem by unsafeLazy {
     AppDetailToolbarItem(R.drawable.ic_processes, R.string.menu_process) {
       detailFragmentManager.deliverSwitchProcessMode()
-      viewModel.processMode = !viewModel.processMode
+      GlobalValues.processMode = !GlobalValues.processMode
 
-      if (viewModel.processMode) {
+      if (GlobalValues.processMode) {
+        val processMap = viewModel.processMapStateFlow.value
+        if (processMap.isEmpty()) return@AppDetailToolbarItem
         if (processBarView == null) {
           initProcessBarView()
         }
-        viewModel.processMapLiveData.value?.let {
-          processBarView?.setData(
-            it.map { mapItem ->
-              ProcessBarAdapter.ProcessBarItem(
-                mapItem.key,
-                mapItem.value
-              )
-            }
-          )
-          processBarView?.isVisible = true
-        }
+        processBarView?.setData(
+          processMap.map { mapItem ->
+            ProcessBarAdapter.ProcessBarItem(
+              mapItem.key,
+              mapItem.value
+            )
+          }
+        )
+        processBarView?.isVisible = true
       } else {
         binding.detailToolbarContainer.removeView(processBarView)
         processBarView = null
 
         doOnMainThreadIdle {
           viewModel.queriedProcess = null
-          detailFragmentManager.deliverFilterItems(null)
+          detailFragmentManager.deliverFilterItems(null, null, lifecycleScope)
         }
       }
-      GlobalValues.processMode = viewModel.processMode
     }
   }
 
@@ -816,11 +844,11 @@ abstract class BaseAppDetailActivity :
       packageName = basePackage.packageName,
       updateTime = basePackage.lastUpdateTime,
       labelDiff = SnapshotDiffItem.DiffNode(
-        basePackage.getAppName() ?: "null",
-        analysisPackage.getAppName() ?: "null"
+        basePackage.getAppName().toString(),
+        analysisPackage.getAppName().toString()
       ),
       versionNameDiff = SnapshotDiffItem.DiffNode(
-        basePackage.versionName,
+        basePackage.versionName.toString(),
         analysisPackage.versionName
       ),
       versionCodeDiff = SnapshotDiffItem.DiffNode(
@@ -832,16 +860,16 @@ abstract class BaseAppDetailActivity :
         PackageUtils.getAbi(analysisPackage).toShort()
       ),
       targetApiDiff = SnapshotDiffItem.DiffNode(
-        basePackage.applicationInfo.targetSdkVersion.toShort(),
-        analysisPackage.applicationInfo.targetSdkVersion.toShort()
+        basePackage.applicationInfo?.targetSdkVersion?.toShort() ?: 0,
+        analysisPackage.applicationInfo?.targetSdkVersion?.toShort()
       ),
       compileSdkDiff = SnapshotDiffItem.DiffNode(
         basePackage.getCompileSdkVersion().toShort(),
         analysisPackage.getCompileSdkVersion().toShort()
       ),
       minSdkDiff = SnapshotDiffItem.DiffNode(
-        basePackage.applicationInfo.minSdkVersion.toShort(),
-        analysisPackage.applicationInfo.minSdkVersion.toShort()
+        basePackage.applicationInfo?.minSdkVersion?.toShort() ?: 0,
+        analysisPackage.applicationInfo?.minSdkVersion?.toShort()
       ),
       nativeLibsDiff = SnapshotDiffItem.DiffNode(
         PackageUtils.getNativeDirLibs(basePackage).toJson().orEmpty(),
@@ -926,7 +954,7 @@ abstract class BaseAppDetailActivity :
         } else {
           viewModel.queriedProcess = null
         }
-        detailFragmentManager.deliverFilterItems(viewModel.queriedProcess)
+        detailFragmentManager.deliverFilterItems(null, viewModel.queriedProcess, lifecycleScope)
       }
     }
     binding.detailToolbarContainer.addView(processBarView)
@@ -934,16 +962,18 @@ abstract class BaseAppDetailActivity :
   }
 
   private fun showProcessBarView() {
-    if (viewModel.processToolIconVisibilityLiveData.value == false && detailFragmentManager.currentFragment !is PermissionAnalysisFragment) {
+    if (!viewModel.processToolIconVisibilityStateFlow.value && detailFragmentManager.currentFragment !is PermissionAnalysisFragment) {
       processBarView?.isGone = true
     } else {
       processBarView?.isVisible = true
     }
   }
 
-  private fun initAbiView(abi: Int, abiSet: Set<Int>) {
+  private fun initAbiView(abi: Int, abiSet: Collection<Int>) {
     val trueAbi = abi.mod(Constants.MULTI_ARCH)
-    viewModel.is64Bit.postValue(trueAbi == Constants.ARMV8 || trueAbi == Constants.X86_64)
+    lifecycleScope.launch {
+      viewModel.is64Bit.emit(PackageUtils.isAbi64Bit(trueAbi))
+    }
 
     if (abiSet.isNotEmpty() && !abiSet.contains(Constants.OVERLAY) && !abiSet.contains(Constants.ERROR)) {
       val abiLabelsList = mutableListOf<AbiLabelNode>()
@@ -958,7 +988,7 @@ abstract class BaseAppDetailActivity :
           abiLabelsList.add(AbiLabelNode(it, isActive))
         }
       }
-      binding.detailsTitle.abiLabelsAdapter.setList(abiLabelsList)
+      binding.detailsTitle.setAbiLabels(abiLabelsList)
     }
   }
 }

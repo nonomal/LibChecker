@@ -15,8 +15,7 @@ import com.absinthe.libraries.utils.view.BottomSheetHeaderView
 
 const val EXTRA_TOP_APPS = "EXTRA_TOP_APPS"
 
-class TimeNodeBottomSheetDialogFragment :
-  BaseBottomSheetViewDialogFragment<TimeNodeBottomSheetView>() {
+class TimeNodeBottomSheetDialogFragment : BaseBottomSheetViewDialogFragment<TimeNodeBottomSheetView>() {
 
   private val viewModel: SnapshotViewModel by activityViewModels()
   private var itemClickAction: ((position: Int) -> Unit)? = null
@@ -29,9 +28,7 @@ class TimeNodeBottomSheetDialogFragment :
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.67).toInt()
-    }
+    maxPeekHeightPercentage = 0.67f
     customTitle?.let { getHeaderView().title.text = it }
     itemClickAction?.let {
       root.adapter.apply {
