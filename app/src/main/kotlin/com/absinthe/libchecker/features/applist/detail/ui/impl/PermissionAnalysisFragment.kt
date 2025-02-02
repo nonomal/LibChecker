@@ -1,50 +1,58 @@
 package com.absinthe.libchecker.features.applist.detail.ui.impl
 
+import android.content.pm.PackageInfo
+import androidx.lifecycle.lifecycleScope
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.PERMISSION
 import com.absinthe.libchecker.databinding.FragmentLibComponentBinding
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.Referable
 import com.absinthe.libchecker.features.applist.detail.ui.EXTRA_PACKAGE_NAME
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibStringDiffUtil
-import com.absinthe.libchecker.features.applist.detail.ui.base.BaseFilterAnalysisFragment
+import com.absinthe.libchecker.features.applist.detail.ui.base.BaseDetailFragment
 import com.absinthe.libchecker.features.applist.detail.ui.base.EXTRA_TYPE
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.utils.extensions.getColor
 import com.absinthe.libchecker.utils.extensions.putArguments
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import timber.log.Timber
 
 class PermissionAnalysisFragment :
-  BaseFilterAnalysisFragment<FragmentLibComponentBinding>(),
+  BaseDetailFragment<FragmentLibComponentBinding>(),
   Referable {
 
   override fun getRecyclerView() = binding.list
   override val needShowLibDetailDialog = true
 
+  override suspend fun getItems(): List<LibStringItemChip> {
+    val flow = viewModel.permissionsItems
+    return flow.value ?: flow.filterNotNull().first()
+  }
+
+  override fun onItemsAvailable(items: List<LibStringItemChip>) {
+    Timber.d("onItemsAvailable: ${items.size}")
+    if (items.isEmpty()) {
+      emptyView.text.text = getString(R.string.empty_list)
+    } else {
+      lifecycleScope.launch(Dispatchers.IO) {
+        setItemsWithFilter(viewModel.queriedText, null)
+      }
+    }
+
+    if (!isListReady) {
+      viewModel.updateItemsCountStateFlow(type, items.size)
+      isListReady = true
+    }
+  }
+
   override fun init() {
     binding.apply {
       list.apply {
         adapter = this@PermissionAnalysisFragment.adapter
-      }
-    }
-
-    viewModel.permissionsItems.observe(viewLifecycleOwner) {
-      if (it.isEmpty()) {
-        emptyView.text.text = getString(R.string.empty_list)
-      } else {
-        if (viewModel.queriedText?.isNotEmpty() == true) {
-          filterList(viewModel.queriedText!!)
-        } else {
-          context?.let {
-            binding.list.addItemDecoration(dividerItemDecoration)
-          }
-          adapter.setDiffNewData(it.toMutableList(), afterListReadyTask)
-        }
-      }
-
-      if (!isListReady) {
-        viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-        viewModel.itemsCountList[type] = it.size
-        isListReady = true
       }
     }
 
@@ -54,9 +62,15 @@ class PermissionAnalysisFragment :
       setEmptyView(emptyView)
     }
 
-    viewModel.packageInfoLiveData.observe(viewLifecycleOwner) {
-      if (it != null) {
-        viewModel.initPermissionData()
+    viewModel.apply {
+      packageInfoStateFlow.onEach {
+        if (it != null) {
+          viewModel.initPermissionData()
+        }
+      }.launchIn(lifecycleScope)
+
+      packageInfoStateFlow.value?.run {
+        permissionsItems.value ?: run { initPermissionData() }
       }
     }
   }
@@ -67,27 +81,23 @@ class PermissionAnalysisFragment :
       if (hasNonGrantedPermissions()) {
         val label = requireContext().getString(R.string.permission_not_granted)
         val color = R.color.material_red_400.getColor(requireContext())
-        viewModel.processMapLiveData.postValue(
-          mapOf(label to color)
-        )
+        viewModel.updateProcessMap(mapOf(label to color))
       } else {
-        viewModel.processMapLiveData.postValue(emptyMap())
+        viewModel.updateProcessMap(emptyMap())
       }
     } else {
-      viewModel.processMapLiveData.postValue(viewModel.processesMap)
+      viewModel.updateProcessMap(viewModel.processesMap)
     }
   }
 
-  override fun getFilterListByText(text: String): List<LibStringItemChip>? {
-    return viewModel.permissionsItems.value?.filter { it.item.name.contains(text, true) }
-  }
-
-  override fun getFilterList(process: String?): List<LibStringItemChip>? {
-    return if (process.isNullOrEmpty()) {
-      viewModel.permissionsItems.value
-    } else {
-      viewModel.permissionsItems.value?.filter { it.item.size == 0L }
-    }
+  override suspend fun getFilterList(
+    searchWords: String?,
+    process: String?
+  ): List<LibStringItemChip>? {
+    return getItems().asSequence()
+      .filter { searchWords == null || it.item.name.contains(searchWords, true) || it.item.source?.contains(searchWords, true) == true }
+      .filter { process == null || it.item.process != PackageInfo.REQUESTED_PERMISSION_GRANTED.toString() }
+      .toList()
   }
 
   companion object {

@@ -9,6 +9,10 @@ object Constants {
   const val NO_LIBS = 3
   const val X86 = 4
   const val X86_64 = 5
+  const val MIPS = 6
+  const val MIPS64 = 7
+  const val RISCV32 = 8
+  const val RISCV64 = 9
   const val MULTI_ARCH = 10
   const val OVERLAY = 100
 
@@ -20,6 +24,10 @@ object Constants {
   const val ARMV5_STRING = "armeabi"
   const val X86_STRING = "x86"
   const val X86_64_STRING = "x86_64"
+  const val MIPS_STRING = "mips"
+  const val MIPS64_STRING = "mips64"
+  const val RISCV_STRING = "riscv32"
+  const val RISCV64_STRING = "riscv64"
   const val OVERLAY_STRING = "Overlay"
 
   const val TEMP_PACKAGE = "lc_temp_package.apk"
@@ -32,7 +40,6 @@ object Constants {
   const val EXAMPLE_DISABLED = "this.is.disabled"
   const val EXAMPLE_RULE = "Example SDK"
 
-  const val PREF_SHOW_SYSTEM_APPS = "showSystemApps"
   const val PREF_APK_ANALYTICS = "apkAnalytics"
   const val PREF_RULES_REPO = "rulesRepository"
   const val PREF_COLORFUL_ICON = "colorfulIcon"
@@ -78,6 +85,8 @@ object Constants {
 
   const val COMMAND_DEBUG_MODE = "/debugmode"
   const val COMMAND_USER_MODE = "/usermode"
+  const val COMMAND_DUMP_APPS_INFO_TXT = "/dumpAppsInfoTxt"
+  const val COMMAND_DUMP_APPS_INFO_MD = "/dumpAppsInfoMd"
 
   const val RULES_DB_FILE_NAME = "rules.db"
   const val RULES_DATABASE_NAME = "rules_database"
@@ -92,6 +101,10 @@ object Constants {
 
   const val PP_FROM_CLOUD_RULES_UPDATE = "ruleDatabaseUpdate"
 
+  const val PREF_DETAILED_ABI_CHART = "detailedAbiChart"
+  const val PREF_RULE_LANGUAGE = "ruleLanguage"
+  const val PREF_SNAPSHOT_AUTO_REMOVE_THRESHOLD = "snapshotAutoRemoveThreshold"
+
   object Event {
     const val LAUNCH_ACTION = "Launch Action"
     const val SNAPSHOT_CLICK = "Snapshot Click"
@@ -105,5 +118,6 @@ object Constants {
     const val MATERIAL_FILES = "me.zhanghai.android.files"
     const val SHIZUKU = "moe.shizuku.privileged.api"
     const val SYSTEMUI = "com.android.systemui"
+    const val ANYWHERE_ = "com.absinthe.anywhere_"
   }
 }

@@ -2,12 +2,9 @@ package com.absinthe.libchecker.features.chart
 
 import android.view.View
 import android.view.ViewGroup
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.absinthe.libchecker.database.Repositories
-import com.absinthe.libchecker.database.entity.LCItem
+import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.features.chart.impl.MarketDistributionChartDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,10 +14,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class ChartViewModel : ViewModel() {
-  val dbItems: LiveData<List<LCItem>> = Repositories.lcRepository.allDatabaseItems
-  val filteredList: MutableLiveData<List<LCItem>> = MutableLiveData()
-  val dialogTitle: MutableLiveData<String> = MutableLiveData()
-  val androidVersion: MutableLiveData<Triple<Int, String, Int?>?> = MutableLiveData()
   private var queryJob: Job? = null
 
   private val _isLoading = MutableStateFlow(false)
@@ -29,8 +22,23 @@ class ChartViewModel : ViewModel() {
   private val _distributionLastUpdateTime = MutableStateFlow("")
   val distributionLastUpdateTime = _distributionLastUpdateTime.asStateFlow()
 
+  private val _detailAbiSwitch = MutableStateFlow(GlobalValues.isDetailedAbiChart)
+  val detailAbiSwitch = _detailAbiSwitch.asStateFlow()
+
+  private val _detailAbiSwitchVisibility = MutableStateFlow(true)
+  val detailAbiSwitchVisibility = _detailAbiSwitchVisibility.asStateFlow()
+
   fun setLoading(loading: Boolean) {
     _isLoading.value = loading
+  }
+
+  fun setDetailAbiSwitch(isDetailedAbiChart: Boolean) {
+    GlobalValues.isDetailedAbiChart = isDetailedAbiChart
+    _detailAbiSwitch.value = isDetailedAbiChart
+  }
+
+  fun setDetailAbiSwitchVisibility(isVisible: Boolean) {
+    _detailAbiSwitchVisibility.value = isVisible
   }
 
   fun <T : View> applyChartData(
@@ -48,7 +56,7 @@ class ChartViewModel : ViewModel() {
           root.removeView(currentChartView)
         }
         root.addView(newChartView)
-        if (dbItems.value?.isNotEmpty() == true) {
+        if (source.getData().isNotEmpty()) {
           setLoading(false)
         }
         if (source is MarketDistributionChartDataSource) {

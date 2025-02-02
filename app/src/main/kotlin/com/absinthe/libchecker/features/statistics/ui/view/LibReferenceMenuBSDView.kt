@@ -1,7 +1,6 @@
 package com.absinthe.libchecker.features.statistics.ui.view
 
 import android.content.Context
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.utils.extensions.dp
@@ -12,18 +11,20 @@ import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 
-class LibReferenceMenuBSDView(context: Context) : LinearLayout(context), IHeaderView {
+class LibReferenceMenuBSDView(context: Context) :
+  LinearLayout(context),
+  IHeaderView {
 
   private val header = BottomSheetHeaderView(context).apply {
     layoutParams =
-      LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+      LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     title.text = context.getString(R.string.advanced_menu)
   }
 
   private val flexLayout = FlexboxLayout(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 8.dp
       it.bottomMargin = 8.dp

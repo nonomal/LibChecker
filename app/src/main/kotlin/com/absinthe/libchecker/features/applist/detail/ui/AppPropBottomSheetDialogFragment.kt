@@ -13,8 +13,7 @@ import pxb.android.axml.ValueWrapper
 
 const val EXTRA_PACKAGE_INFO = "EXTRA_PACKAGE_INFO"
 
-class AppPropBottomSheetDialogFragment :
-  BaseBottomSheetViewDialogFragment<AppPropsBottomSheetView>() {
+class AppPropBottomSheetDialogFragment : BaseBottomSheetViewDialogFragment<AppPropsBottomSheetView>() {
 
   private val packageInfo by lazy {
     BundleCompat.getParcelable(
@@ -24,17 +23,15 @@ class AppPropBottomSheetDialogFragment :
     )!!
   }
 
-  override fun initRootView(): AppPropsBottomSheetView =
-    AppPropsBottomSheetView(requireContext(), packageInfo)
+  override fun initRootView(): AppPropsBottomSheetView = AppPropsBottomSheetView(requireContext(), packageInfo)
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.67).toInt()
-    }
-    val propsMap =
-      ApplicationReader.getManifestProperties(File(packageInfo.applicationInfo.sourceDir))
+    maxPeekHeightPercentage = 0.67f
+    val propsMap = runCatching {
+      ApplicationReader.getManifestProperties(File(packageInfo.applicationInfo!!.sourceDir))
+    }.getOrNull()
     val bundleList = if (propsMap.isNullOrEmpty()) {
       emptyList()
     } else {
@@ -53,7 +50,7 @@ class AppPropBottomSheetDialogFragment :
       bundleList.add(
         0,
         AppPropItem(
-          key = "Dexopt",
+          key = "dexopt",
           value = "status=${it.first}, reason=${it.second}"
         )
       )

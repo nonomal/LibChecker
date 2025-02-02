@@ -16,16 +16,14 @@ class AdvancedMenuBSDFragment : BaseBottomSheetViewDialogFragment<AdvancedMenuBS
   private val optionsViewMap = mutableMapOf<Int, AdvancedMenuItemView>()
   private val itemOptionsViewMap = mutableMapOf<Int, AdvancedMenuItemView>()
 
-  private var onDismissCallback: () -> Unit = {}
+  private var onDismissCallback: ((advancedDiff: Int, itemAdvancedDiff: Int) -> Unit)? = null
 
   override fun initRootView(): AdvancedMenuBSDView = AdvancedMenuBSDView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.8).toInt()
-    }
+    maxPeekHeightPercentage = 0.8f
     optionsViewMap[AdvancedOptions.SHOW_SYSTEM_APPS] = root.addOptionItemView(R.string.adv_show_system_apps, AdvancedOptions.SHOW_SYSTEM_APPS)
     optionsViewMap[AdvancedOptions.SHOW_SYSTEM_FRAMEWORK_APPS] = root.addOptionItemView(R.string.adv_show_system_framework_apps, AdvancedOptions.SHOW_SYSTEM_FRAMEWORK_APPS)
     optionsViewMap[AdvancedOptions.SHOW_OVERLAYS] = root.addOptionItemView(R.string.adv_show_overlays, AdvancedOptions.SHOW_OVERLAYS)
@@ -71,9 +69,10 @@ class AdvancedMenuBSDFragment : BaseBottomSheetViewDialogFragment<AdvancedMenuBS
     }
 
     dialog?.setOnDismissListener {
-      if (GlobalValues.advancedOptions != previousAdvancedOptions || GlobalValues.itemAdvancedOptions != previousItemAdvancedOptions) {
-        onDismissCallback()
-      }
+      onDismissCallback?.invoke(
+        previousAdvancedOptions.xor(GlobalValues.advancedOptions),
+        previousItemAdvancedOptions.xor(GlobalValues.itemAdvancedOptions)
+      )
     }
   }
 
@@ -90,7 +89,7 @@ class AdvancedMenuBSDFragment : BaseBottomSheetViewDialogFragment<AdvancedMenuBS
     }
   }
 
-  fun setOnDismissListener(action: () -> Unit) {
+  fun setOnDismissListener(action: (advancedDiff: Int, itemAdvancedDiff: Int) -> Unit) {
     onDismissCallback = action
   }
 }

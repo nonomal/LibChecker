@@ -53,9 +53,14 @@
   <string name="string_compose_used">Jetpack Compose Used</string>
   <string name="string_compose_unused">Jetpack Compose Unused</string>
 
+  <string name="android_dist_label">Distribution</string>
   <string name="android_dist_source">Source</string>
   <string name="android_dist_title">Android Version Distribution Statistics</string>
   <string name="android_dist_subtitle_format">Update Time: %s</string>
+
+  <string name="chart_abi_detailed">Detailed</string>
+  <string name="chart_abi_concise">Concise</string>
+  <string name="chart_item_not_support">Not Support</string>
 
   <!--  About  -->
   <string name="settings_about">About</string>
@@ -66,6 +71,9 @@
   <string name="settings_rate_us_summary">This can make us found by more people</string>
   <string name="settings_get_updates">Get Updates</string>
   <string name="settings_get_updates_summary">Get the latest version that is more stable and packed with features</string>
+  <string name="settings_get_updates_in_app">In-app</string>
+  <string name="settings_get_updates_in_app_chip_stable">Stable</string>
+  <string name="settings_get_updates_in_app_chip_ci">CI</string>
   <string name="about_info">This app is used to view the third-party libraries used by applications in your device.</string>
   <string name="toolbar_rate">Rate</string>
   <string name="resource_declaration">Part of the resources in the application comes from: </string>
@@ -113,7 +121,7 @@
   <string name="not_found">Not found</string>
   <string name="create_an_issue">Assist us to supplement the information</string>
   <string name="app_bundle_details">The Android App Bundle is Android\'s new, official publishing format that offers a more efficient way to build and release your app. The Android App Bundle lets you more easily deliver a great experience in a smaller app size, which can improve install success and reduce uninstalls. It\'s easy to switch. You don\'t need to refactor your code to start benefiting from a smaller app. And once you\'ve switched, you\'ll benefit from modular app development and customizable feature delivery.</string>
-  <string name="kotlin_details">Kotlin is a cross-platform, statically typed, general-purpose programming language with type inference. Kotlin is designed to interoperate fully with Java, and the JVM version of Kotlin\'s standard library depends on the Java Class Library, but type inference allows its syntax to be more concise.</string>
+  <string name="kotlin_details">Kotlin is an open-source statically typed programming language that targets the JVM, Android, JavaScript, Wasm, and Native. It\'s developed by JetBrains. Kotlin is a modern but already mature programming language designed to make developers happier. It\'s concise, safe, interoperable with Java and other languages, and provides many ways to reuse code between multiple platforms for productive programming.</string>
   <string name="items_count">Items count: </string>
   <string name="further_operation">Further Operation</string>
   <string name="app_info_launch">Launch</string>
@@ -127,8 +135,11 @@
   <string name="play_app_signing_details">With Play App Signing, Google manages and protects your app\'s signing key for you and uses it to sign optimized, distribution APKs that are generated from your app bundles. Play App Signing stores your app signing key on Google’s secure infrastructure and offers upgrade options to increase security.</string>
   <string name="pwa_details">Progressive Web Apps (PWA) are built and enhanced with modern APIs to deliver enhanced capabilities, reliability, and installability while reaching anyone, anywhere, on any device with a single codebase.</string>
   <string name="jetpack_compose_details">Jetpack Compose is Android’s modern toolkit for building native UI. It simplifies and accelerates UI development on Android. Quickly bring your app to life with less code, powerful tools, and intuitive Kotlin APIs.</string>
+  <string name="jetbrain_compose_multiplatform_details">Compose Multiplatform is a modern declarative and reactive UI framework developed by JetBrains that provides a simple way to build user interfaces with a small amount of Kotlin code. It also allows you to write your UI once and run it on any of the supported platforms – iOS, Android, desktop (Windows, macOS, Linux), and web.</string>
   <string name="extract_native_libs_tip">The app declares </string>
   <string name="xml_detail">XML Detail</string>
+  <string name="lib_detail_dialog_title_16kb_page_size">16 KB Page Size Support</string>
+  <string name="lib_detail_dialog_content_16kb_page_size">Historically, Android has only supported 4 KB memory page sizes, which has optimized system memory performance for the average amount of total memory that Android devices have typically had. Beginning with Android 15, AOSP supports devices that are configured to use a page size of 16 KB (16 KB devices). If your app uses any NDK libraries, either directly or indirectly through an SDK, then you will need to rebuild your app for it to work on these 16 KB devices.</string>
   <string name="format_last_updated">Updated at: %s</string>
   <string name="menu_process">Process</string>
   <string name="menu_split">Split</string>
@@ -168,8 +179,11 @@
   <string name="lib_detail_app_install_source_title">Installation Source</string>
   <string name="lib_detail_app_install_source_originating_package">Installation requester</string>
   <string name="lib_detail_app_install_source_installing_package">Installation Executor</string>
+  <string name="lib_detail_app_installed_time">Installation Time</string>
+  <string name="lib_detail_app_first_installed_time">First installed time: </string>
+  <string name="lib_detail_app_last_updated_time">Last installed time: </string>
   <string name="lib_detail_app_install_source_empty">Unknown</string>
-  <string name="lib_detail_app_install_source_empty_detail">adb or uninstalled app</string>
+  <string name="lib_detail_app_install_source_empty_detail">Shell or uninstalled app</string>
   <string name="lib_detail_app_install_source_shizuku_usage">Because Android restricts the API to get the installation requester, we use Shizuku to get the installation requester.</string>
   <string name="lib_detail_app_install_source_shizuku_uninstalled">Shizuku not installed</string>
   <string name="lib_detail_app_install_source_shizuku_uninstalled_detail">Click here to install Shizuku</string>
@@ -187,6 +201,7 @@
   <string name="toast_cant_open_app">Can\'t open this app</string>
   <string name="toast_cloud_rules_update_error">Failed to update cloud rules. Please try again.</string>
   <string name="toast_not_enough_storage_space">Not enough storage space</string>
+  <string name="toast_downloading_app">Download requested</string>
 
   <!--  Snapshot  -->
   <string name="snapshot_btn_save_current">Save current snapshot</string>
@@ -228,6 +243,9 @@
   <string name="album_item_comparison_choose_local_apk">Choose Local APK</string>
   <string name="album_item_management_title">Management</string>
   <string name="album_item_management_subtitle">Manage all snapshots</string>
+  <string name="album_item_management_snapshot_auto_remove_default_title">Keep Only the Most Recent Snapshots</string>
+  <string name="album_item_management_snapshot_auto_remove_specific_title">Keep Only the %d Most Recent Items</string>
+  <string name="album_item_management_snapshot_auto_remove_desc">Starting from tapping \"%s\", only the most recent snapshots will be retained, and the older snapshots will be automatically deleted.</string>
   <string name="album_item_backup_restore_title">Backup &amp; Restore</string>
   <string name="album_item_backup_restore_subtitle">Backup and restore snapshots</string>
   <string name="album_item_track_title">Track</string>
@@ -239,6 +257,7 @@
   <string name="album_restore_detail">%1$s : %2$s items in total\n</string>
   <string name="album_click_to_choose">Click to Choose</string>
   <string name="album_dialog_delete_snapshot_message">Processing…</string>
+  <string name="album_snapshot_top_apps_not_initialized">Not loaded yet</string>
 
   <!--  Integration  -->
   <string name="integration_monkey_king_menu_block">Block it via \"MonkeyKing Purify\"</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isGone
 import androidx.core.view.marginBottom
 import androidx.core.view.marginLeft
 import androidx.core.view.marginRight
@@ -13,8 +14,10 @@ import com.absinthe.libchecker.utils.extensions.isRtl
 /**
  * From drakeet
  */
-abstract class AViewGroup(context: Context, attributeSet: AttributeSet? = null) :
-  ViewGroup(context, attributeSet) {
+abstract class AViewGroup(
+  context: Context,
+  attributeSet: AttributeSet? = null
+) : ViewGroup(context, attributeSet) {
 
   protected fun View.defaultWidthMeasureSpec(parentView: ViewGroup): Int {
     return when (layoutParams.width) {
@@ -75,6 +78,8 @@ abstract class AViewGroup(context: Context, attributeSet: AttributeSet? = null) 
   protected val Int.dp: Int get() = (this * resources.displayMetrics.density + 0.5f).toInt()
   protected val View.measuredWidthWithMargins get() = (measuredWidth + marginLeft + marginRight)
   protected val View.measuredHeightWithMargins get() = (measuredHeight + marginTop + marginBottom)
+  protected val View.measuredWidthWithVisibility get() = if (isGone) 0 else measuredWidth
+  protected val View.measuredHeightWithVisibility get() = if (isGone) 0 else measuredHeight
 
   protected class LayoutParams(width: Int, height: Int) : MarginLayoutParams(width, height)
 }

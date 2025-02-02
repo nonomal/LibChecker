@@ -1,18 +1,20 @@
 package com.absinthe.libchecker.database
 
-import androidx.lifecycle.LiveData
+import android.view.ContextThemeWrapper
+import androidx.appcompat.app.AlertDialog
 import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.database.entity.LCItem
 import com.absinthe.libchecker.database.entity.SnapshotDiffStoringItem
 import com.absinthe.libchecker.database.entity.SnapshotItem
 import com.absinthe.libchecker.database.entity.TimeStampItem
 import com.absinthe.libchecker.database.entity.TrackItem
+import com.absinthe.libchecker.utils.UiUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 class LCRepository(private val lcDao: LCDao) {
-
-  val allDatabaseItems: LiveData<List<LCItem>> = lcDao.getItemsLiveData()
   val allLCItemsFlow: Flow<List<LCItem>> = lcDao.getItemsFlow()
   val allSnapshotItemsFlow: Flow<List<SnapshotItem>> =
     lcDao.getSnapshotsFlow(GlobalValues.snapshotTimestamp)
@@ -97,7 +99,7 @@ class LCRepository(private val lcDao: LCDao) {
     lcDao.delete(item)
   }
 
-  suspend fun deleteLCItemByPackageName(packageName: String) {
+  fun deleteLCItemByPackageName(packageName: String) {
     if (checkDatabaseStatus().not()) return
     lcDao.deleteLCItemByPackageName(packageName)
   }
@@ -127,6 +129,30 @@ class LCRepository(private val lcDao: LCDao) {
     lcDao.deleteSnapshots(chunk)
     chunk.clear()
     lcDao.deleteByTimeStamp(timestamp)
+  }
+
+  suspend fun retainLatestSnapshotsAndRemoveOld(count: Int, forceShowLoading: Boolean, context: ContextThemeWrapper? = null) {
+    if (checkDatabaseStatus().not()) return
+    Timber.d("Retain latest $count snapshots and remove old")
+    var loadingDialog: AlertDialog? = null
+    if (forceShowLoading) {
+      withContext(Dispatchers.Main) {
+        loadingDialog = UiUtils.createLoadingDialog(context!!)
+        loadingDialog.show()
+      }
+    }
+    getTimeStamps()
+      .sortedBy { it.timestamp }
+      .reversed()
+      .drop(count)
+      .forEach {
+        deleteSnapshotsAndTimeStamp(it.timestamp)
+      }
+    if (forceShowLoading) {
+      withContext(Dispatchers.Main) {
+        loadingDialog?.dismiss()
+      }
+    }
   }
 
   suspend fun updateTimeStampItem(item: TimeStampItem) {
@@ -169,8 +195,7 @@ class LCRepository(private val lcDao: LCDao) {
     lcDao.deleteAllSnapshotDiffItems()
   }
 
-  suspend fun getSnapshotDiff(packageName: String): SnapshotDiffStoringItem? =
-    lcDao.getSnapshotDiff(packageName)
+  suspend fun getSnapshotDiff(packageName: String): SnapshotDiffStoringItem? = lcDao.getSnapshotDiff(packageName)
 
   fun updateFeatures(packageName: String, features: Int) {
     if (checkDatabaseStatus().not()) return

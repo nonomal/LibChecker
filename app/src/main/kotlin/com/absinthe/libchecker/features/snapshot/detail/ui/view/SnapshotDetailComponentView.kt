@@ -17,7 +17,6 @@ import com.absinthe.libchecker.R
 import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.utils.extensions.getDimensionPixelSize
 import com.absinthe.libchecker.utils.extensions.toColorStateList
-import com.absinthe.libchecker.utils.extensions.valueUnsafe
 import com.absinthe.libchecker.view.AViewGroup
 import com.absinthe.rulesbundle.Rule
 import com.google.android.material.card.MaterialCardView
@@ -26,7 +25,7 @@ import com.google.android.material.chip.Chip
 class SnapshotDetailComponentView(context: Context) : MaterialCardView(context) {
 
   val container = SnapshotDetailComponentContainerView(context).apply {
-    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
   }
 
   init {
@@ -98,7 +97,7 @@ class SnapshotDetailComponentView(context: Context) : MaterialCardView(context) 
           text = rule.label
           chipBackgroundColor = colorRes.toColorStateList(context)
 
-          if (!GlobalValues.isColorfulIcon.valueUnsafe && !rule.isSimpleColorIcon) {
+          if (!GlobalValues.isColorfulIcon && !rule.isSimpleColorIcon) {
             val icon = chipIcon
             icon?.let {
               it.mutate().colorFilter =

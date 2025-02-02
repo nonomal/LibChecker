@@ -47,7 +47,6 @@ import com.absinthe.libchecker.features.snapshot.ui.adapter.SnapshotAdapter
 import com.absinthe.libchecker.ui.adapter.HorizontalSpacesItemDecoration
 import com.absinthe.libchecker.ui.base.BaseActivity
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
-import com.absinthe.libchecker.utils.FileUtils
 import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.UiUtils
 import com.absinthe.libchecker.utils.extensions.addPaddingTop
@@ -106,8 +105,7 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
   override fun onDestroy() {
     super.onDestroy()
     if (leftTimeStamp == -1L || rightTimeStamp == -1L) {
-      FileUtils.delete(File(Constants.TEMP_PACKAGE))
-      FileUtils.delete(File(Constants.TEMP_PACKAGE_2))
+      externalCacheDir?.deleteRecursively()
     }
   }
 
@@ -271,10 +269,10 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
     }
 
     viewModel.apply {
-      snapshotDiffItems.observe(this@ComparisonActivity) { list ->
-        adapter.setList(list.sortedByDescending { it.updateTime })
+      snapshotDiffItemsFlow.onEach {
+        adapter.setList(it.sortedByDescending { item -> item.updateTime })
         flip(VF_LIST)
-      }
+      }.launchIn(lifecycleScope)
       effect.onEach {
         when (it) {
           is SnapshotViewModel.Effect.ChooseComparedApk -> {
@@ -291,6 +289,23 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
                 it.snapshotCount.toString()
             }
           }
+
+          is SnapshotViewModel.Effect.DiffItemChange -> {
+            val newItems = adapter.data
+              .asSequence()
+              .map { i ->
+                if (i.packageName == it.item.packageName) {
+                  it.item
+                } else {
+                  i
+                }
+              }
+              .toList()
+            adapter.setList(newItems.sortedByDescending { item -> item.updateTime })
+            flip(VF_LIST)
+          }
+
+          else -> {}
         }
       }.launchIn(lifecycleScope)
     }
@@ -352,8 +367,8 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
 
   private fun getUriFileName(path: String): String {
     val decode = Uri.decode(path)
-    return if (decode.contains("/")) {
-      getUriFileName(decode.split("/").last())
+    return if (decode.contains(File.separator)) {
+      getUriFileName(decode.split(File.separator).last())
     } else {
       decode
     }
@@ -494,16 +509,18 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
               or PackageManager.MATCH_UNINSTALLED_PACKAGES
             )
           pi = PackageManagerCompat.getPackageArchiveInfo(tf.path, flag)?.also {
-            it.applicationInfo.sourceDir = tf.path
-            it.applicationInfo.publicSourceDir = tf.path
-          }
+            it.applicationInfo?.let { ai ->
+              ai.sourceDir = tf.path
+              ai.publicSourceDir = tf.path
 
-          val iconSize = resources.getDimensionPixelSize(R.dimen.lib_detail_icon_size)
-          val appIconLoader = AppIconLoader(iconSize, false, this)
-          if (fileName == Constants.TEMP_PACKAGE) {
-            leftIconOriginal = appIconLoader.loadIcon(pi!!.applicationInfo)
-          } else {
-            rightIconOriginal = appIconLoader.loadIcon(pi!!.applicationInfo)
+              val iconSize = resources.getDimensionPixelSize(R.dimen.lib_detail_icon_size)
+              val appIconLoader = AppIconLoader(iconSize, false, this)
+              if (fileName == Constants.TEMP_PACKAGE) {
+                leftIconOriginal = appIconLoader.loadIcon(ai)
+              } else {
+                rightIconOriginal = appIconLoader.loadIcon(ai)
+              }
+            }
           }
         } else {
           showToast(R.string.toast_not_enough_storage_space)
@@ -513,13 +530,13 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
     }
 
     pi?.let {
-      val ai = it.applicationInfo
+      val ai = it.applicationInfo ?: throw IllegalStateException("ApplicationInfo is null")
       return SnapshotItem(
         id = null,
         packageName = it.packageName,
         timeStamp = -1L,
-        label = it.getAppName() ?: "null",
-        versionName = it.versionName ?: "null",
+        label = it.getAppName().toString(),
+        versionName = it.versionName.toString(),
         versionCode = it.getVersionCode(),
         installedTime = it.firstInstallTime,
         lastUpdatedTime = it.lastUpdateTime,
@@ -539,7 +556,7 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
         metadata = PackageUtils.getMetaDataItems(it).toJson().orEmpty(),
         packageSize = it.getPackageSize(true),
         compileSdk = it.getCompileSdkVersion().toShort(),
-        minSdk = it.applicationInfo.minSdkVersion.toShort()
+        minSdk = ai.minSdkVersion.toShort()
       )
     } ?: throw IllegalStateException("PackageInfo is null")
   }
@@ -547,6 +564,7 @@ class ComparisonActivity : BaseActivity<ActivityComparisonBinding>() {
   private fun getSuitableLayoutManager(): RecyclerView.LayoutManager {
     return when (resources.configuration.orientation) {
       Configuration.ORIENTATION_PORTRAIT -> LinearLayoutManager(this)
+
       Configuration.ORIENTATION_LANDSCAPE -> StaggeredGridLayoutManager(
         2,
         StaggeredGridLayoutManager.VERTICAL
