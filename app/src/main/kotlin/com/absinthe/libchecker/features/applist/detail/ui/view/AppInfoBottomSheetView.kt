@@ -11,7 +11,9 @@ import com.absinthe.libchecker.view.app.IHeaderView
 import com.absinthe.libraries.utils.manager.SystemBarManager
 import com.absinthe.libraries.utils.view.BottomSheetHeaderView
 
-class AppInfoBottomSheetView(context: Context) : AViewGroup(context), IHeaderView {
+class AppInfoBottomSheetView(context: Context) :
+  AViewGroup(context),
+  IHeaderView {
 
   private val header = BottomSheetHeaderView(context).apply {
     layoutParams =
@@ -21,7 +23,7 @@ class AppInfoBottomSheetView(context: Context) : AViewGroup(context), IHeaderVie
 
   val launch = AppInfoItemView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.MATCH_PARENT,
       ViewGroup.LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 24.dp
@@ -34,7 +36,7 @@ class AppInfoBottomSheetView(context: Context) : AViewGroup(context), IHeaderVie
 
   val setting = AppInfoItemView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.MATCH_PARENT,
       ViewGroup.LayoutParams.WRAP_CONTENT
     )
     setIcon(R.drawable.ic_settings)
@@ -48,7 +50,7 @@ class AppInfoBottomSheetView(context: Context) : AViewGroup(context), IHeaderVie
       ViewGroup.LayoutParams.MATCH_PARENT,
       ViewGroup.LayoutParams.WRAP_CONTENT
     )
-    overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+    overScrollMode = OVER_SCROLL_NEVER
   }
 
   init {

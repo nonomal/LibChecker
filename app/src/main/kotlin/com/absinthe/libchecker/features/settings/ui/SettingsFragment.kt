@@ -16,6 +16,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
@@ -27,12 +28,13 @@ import com.absinthe.libchecker.app.SystemServices
 import com.absinthe.libchecker.constant.Constants
 import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.constant.URLManager
-import com.absinthe.libchecker.features.about.ui.AboutActivity
+import com.absinthe.libchecker.features.about.AboutPageBuilder
 import com.absinthe.libchecker.features.applist.detail.ui.ApkDetailActivity
 import com.absinthe.libchecker.features.home.HomeViewModel
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
 import com.absinthe.libchecker.ui.base.IAppBarContainer
 import com.absinthe.libchecker.ui.base.IListController
+import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.Toasty
 import com.absinthe.libchecker.utils.UiUtils
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
@@ -44,6 +46,7 @@ import com.absinthe.rulesbundle.LCRules
 import com.microsoft.appcenter.analytics.Analytics
 import com.microsoft.appcenter.analytics.EventProperties
 import java.util.Locale
+import kotlinx.coroutines.launch
 import rikka.material.app.LocaleDelegate
 import rikka.preference.SimpleMenuPreference
 import rikka.recyclerview.fixEdgeEffect
@@ -52,7 +55,9 @@ import rikka.widget.borderview.BorderView
 import rikka.widget.borderview.BorderViewDelegate
 import timber.log.Timber
 
-class SettingsFragment : PreferenceFragmentCompat(), IListController {
+class SettingsFragment :
+  PreferenceFragmentCompat(),
+  IListController {
 
   private lateinit var borderViewDelegate: BorderViewDelegate
   private lateinit var prefRecyclerView: RecyclerView
@@ -61,16 +66,6 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
   override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
     setPreferencesFromResource(R.xml.settings, null)
 
-    findPreference<TwoStatePreference>(Constants.PREF_SHOW_SYSTEM_APPS)?.apply {
-      setOnPreferenceChangeListener { _, newValue ->
-        GlobalValues.isShowSystemApps.value = newValue as Boolean
-        Analytics.trackEvent(
-          Constants.Event.SETTINGS,
-          EventProperties().set("PREF_SHOW_SYSTEM_APPS", newValue)
-        )
-        true
-      }
-    }
     findPreference<TwoStatePreference>(Constants.PREF_APK_ANALYTICS)?.apply {
       setOnPreferenceChangeListener { _, newValue ->
         val flag = if (newValue as Boolean) {
@@ -97,11 +92,11 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
       }
     }
     findPreference<TwoStatePreference>(Constants.PREF_COLORFUL_ICON)?.apply {
-      setOnPreferenceChangeListener { _, newValue ->
-        GlobalValues.isColorfulIcon.value = newValue as Boolean
+      setOnPreferenceChangeListener { pref, newValue ->
+        emitPrefChange(pref.key, newValue)
         Analytics.trackEvent(
           Constants.Event.SETTINGS,
-          EventProperties().set("PREF_COLORFUL_ICON", newValue)
+          EventProperties().set("PREF_COLORFUL_ICON", newValue as Boolean)
         )
         true
       }
@@ -125,6 +120,7 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
     }
     val languagePreference =
       findPreference<ListPreference>(Constants.PREF_LOCALE)?.apply {
+        isVisible = !OsUtils.atLeastT()
         setOnPreferenceChangeListener { _, newValue ->
           if (newValue is String) {
             val locale: Locale = if ("SYSTEM" == newValue) {
@@ -205,7 +201,7 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
     findPreference<Preference>(Constants.PREF_ABOUT)?.apply {
       summary = "${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})"
       setOnPreferenceClickListener {
-        startActivity(Intent(requireContext(), AboutActivity::class.java))
+        AboutPageBuilder.start(requireContext())
         true
       }
     }
@@ -295,14 +291,11 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
     }
     findPreference<TwoStatePreference>(Constants.PREF_ANONYMOUS_ANALYTICS)?.apply {
       isVisible = getBoolean(R.bool.is_foss).not()
-      setOnPreferenceChangeListener { _, newValue ->
-        GlobalValues.isAnonymousAnalyticsEnabled.value = newValue as Boolean
-        true
-      }
     }
 
     val tag = languagePreference.value
     val index = listOf(*languagePreference.entryValues).indexOf(tag)
+    Timber.d("Locale = $tag, index = $index, entries = ${listOf(*languagePreference.entryValues)}")
     val localeName: MutableList<String> = ArrayList()
     val localeNameUser: MutableList<String> = ArrayList()
     val userLocale = GlobalValues.locale
@@ -409,4 +402,10 @@ class SettingsFragment : PreferenceFragmentCompat(), IListController {
   override fun getBorderViewDelegate(): BorderViewDelegate = borderViewDelegate
   override fun isAllowRefreshing(): Boolean = true
   override fun getSuitableLayoutManager(): RecyclerView.LayoutManager? = null
+
+  private fun emitPrefChange(key: String, value: Any) {
+    lifecycleScope.launch {
+      GlobalValues.preferencesFlow.emit(key to value)
+    }
+  }
 }

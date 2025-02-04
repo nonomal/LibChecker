@@ -11,7 +11,6 @@ import androidx.core.text.buildSpannedString
 import androidx.core.text.scale
 import androidx.core.view.children
 import androidx.core.view.isVisible
-import androidx.core.view.marginEnd
 import androidx.core.view.marginStart
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.features.snapshot.detail.bean.SnapshotDiffItem
@@ -23,8 +22,10 @@ import com.absinthe.libchecker.utils.extensions.sizeToString
 import com.absinthe.libchecker.view.AViewGroup
 import com.absinthe.libchecker.view.app.AlwaysMarqueeTextView
 
-class SnapshotTitleView(context: Context, attributeSet: AttributeSet? = null) :
-  AViewGroup(context, attributeSet) {
+class SnapshotTitleView(
+  context: Context,
+  attributeSet: AttributeSet? = null
+) : AViewGroup(context, attributeSet) {
 
   val iconView = AppCompatImageView(context).apply {
     val iconSize = context.getDimensionPixelSize(R.dimen.lib_detail_icon_size)
@@ -170,7 +171,7 @@ class SnapshotTitleView(context: Context, attributeSet: AttributeSet? = null) :
       measuredWidth - paddingStart - paddingEnd - iconView.measuredWidth - appNameView.marginStart
     if (appNameView.measuredWidth > textWidth) {
       appNameView.measure(
-        (textWidth - apisView.measuredWidth - appNameView.marginEnd).toExactlyMeasureSpec(),
+        textWidth.toExactlyMeasureSpec(),
         appNameView.defaultHeightMeasureSpec(this)
       )
     }

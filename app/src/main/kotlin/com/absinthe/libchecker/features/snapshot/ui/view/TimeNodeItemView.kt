@@ -36,7 +36,7 @@ class TimeNodeItemView(context: Context) : AViewGroup(context) {
       ).apply {
         layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 24.dp)
         gravity = Gravity.CENTER
-        text = context.getString(R.string.empty_list)
+        text = context.getString(R.string.album_snapshot_top_apps_not_initialized)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
       }
     )
@@ -45,7 +45,7 @@ class TimeNodeItemView(context: Context) : AViewGroup(context) {
   private val rvList = RecyclerView(context).apply {
     layoutParams =
       LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+    overScrollMode = OVER_SCROLL_NEVER
     layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
     adapter = this@TimeNodeItemView.adapter
   }

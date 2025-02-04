@@ -8,6 +8,7 @@ plugins {
   alias(libs.plugins.hiddenApiRefine)
   alias(libs.plugins.ksp)
   alias(libs.plugins.moshiX)
+  alias(libs.plugins.aboutlibraries)
   id("res-opt") apply false
 }
 
@@ -23,6 +24,9 @@ setupAppModule {
   namespace = "com.absinthe.libchecker"
   defaultConfig {
     applicationId = "com.absinthe.libchecker"
+  }
+  androidResources {
+    generateLocaleConfig = true
   }
 
   buildFeatures {
@@ -109,8 +113,8 @@ dependencies {
   ksp(libs.androidX.room.compiler)
 
   implementation(libs.lottie)
-  implementation(libs.drakeet.about)
-  implementation(libs.drakeet.multitype)
+  implementation(libs.aboutlibraries.core)
+  implementation(libs.aboutlibraries.ui)
   implementation(libs.brvah)
   implementation(libs.mpAndroidChart)
   implementation(libs.timber)
@@ -120,8 +124,6 @@ dependencies {
   implementation(libs.appIconLoader)
   implementation(libs.appIconLoader.coil)
   implementation(libs.hiddenApiBypass)
-  implementation(libs.slf4j)
-  implementation(libs.commons.io)
   implementation(libs.commons.compress)
   implementation(libs.flexbox)
 
