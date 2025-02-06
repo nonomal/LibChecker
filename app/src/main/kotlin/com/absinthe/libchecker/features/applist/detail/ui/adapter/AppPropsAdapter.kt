@@ -29,7 +29,7 @@ class AppPropsAdapter(
 
   private val appResources by lazy {
     SystemServices.packageManager.getResourcesForApplication(
-      packageInfo.applicationInfo
+      packageInfo.applicationInfo!!
     )
   }
 
@@ -47,7 +47,7 @@ class AppPropsAdapter(
     }
   }
 
-  private val linkable = setOf("string", "array", "bool", "xml", "drawable", "mipmap", "color", "dimen")
+  private val linkable = setOf("array", "bool", "color", "dimen", "drawable", "integer", "mipmap", "string", "xml")
 
   private fun parseValue(item: AppPropItem): String {
     if (item.value.maybeResourceId()) {
@@ -76,7 +76,7 @@ class AppPropsAdapter(
       isVisible = true
       setImageResource(R.drawable.ic_outline_change_circle_24)
       setOnClickListener {
-        val transformed = getTag(R.id.resource_transformed_id) as? Boolean ?: false
+        val transformed = getTag(R.id.resource_transformed_id) as? Boolean == true
         if (transformed) {
           itemView.value.text = parseValue(item)
           setImageResource(R.drawable.ic_outline_change_circle_24)
@@ -90,15 +90,18 @@ class AppPropsAdapter(
                 itemView.value.text = appResources.getString(item.value.toInt())
                 clickedTag = true
               }
+
               "array" -> {
                 itemView.value.text =
                   appResources.getStringArray(item.value.toInt()).contentToString()
                 clickedTag = true
               }
+
               "bool" -> {
                 itemView.value.text = appResources.getBoolean(item.value.toInt()).toString()
                 clickedTag = true
               }
+
               "xml" -> {
                 appResources.getXml(item.value.toInt()).let {
                   val text = ResourceParser(it).setMarkColor(true).parse()
@@ -111,6 +114,7 @@ class AppPropsAdapter(
                 }
                 clickedTag = false
               }
+
               "drawable", "mipmap" -> {
                 appResources.getDrawable(item.value.toInt(), null)?.let { drawable ->
                   val bitmap = drawable.toBitmap(
@@ -136,10 +140,17 @@ class AppPropsAdapter(
                 }
                 clickedTag = true
               }
+
               "dimen" -> {
                 itemView.value.text = appResources.getDimension(item.value.toInt()).toString()
                 clickedTag = true
               }
+
+              "integer" -> {
+                itemView.value.text = appResources.getInteger(item.value.toInt()).toString()
+                clickedTag = true
+              }
+
               else -> {
                 clickedTag = false
               }

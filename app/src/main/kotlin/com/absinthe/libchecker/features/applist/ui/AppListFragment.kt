@@ -1,5 +1,6 @@
 package com.absinthe.libchecker.features.applist.ui
 
+import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.view.Menu
@@ -7,6 +8,8 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.widget.FrameLayout
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -30,11 +33,13 @@ import com.absinthe.libchecker.features.applist.ui.adapter.AppAdapter
 import com.absinthe.libchecker.features.applist.ui.adapter.AppListDiffUtil
 import com.absinthe.libchecker.features.home.HomeViewModel
 import com.absinthe.libchecker.features.home.INavViewContainer
+import com.absinthe.libchecker.ui.adapter.VerticalSpacesItemDecoration
 import com.absinthe.libchecker.ui.base.BaseActivity
 import com.absinthe.libchecker.ui.base.BaseListControllerFragment
 import com.absinthe.libchecker.ui.base.IAppBarContainer
 import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
+import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.isPreinstalled
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
 import com.absinthe.libchecker.utils.extensions.setSpaceFooterView
@@ -43,12 +48,16 @@ import com.absinthe.libchecker.utils.showToast
 import com.absinthe.libraries.utils.utils.AntiShakeUtils
 import com.microsoft.appcenter.analytics.Analytics
 import com.microsoft.appcenter.analytics.EventProperties
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import jonathanfinerty.once.Once
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
@@ -64,6 +73,7 @@ class AppListFragment :
   SearchView.OnQueryTextListener {
 
   private val appAdapter = AppAdapter()
+  private var updateItemsJob: Job? = null
   private var delayShowNavigationJob: Job? = null
   private var advancedMenuBSDFragment: AdvancedMenuBSDFragment? = null
   private var isFirstLaunch = !Once.beenDone(Once.THIS_APP_INSTALL, OnceTag.FIRST_LAUNCH)
@@ -72,6 +82,8 @@ class AppListFragment :
   private var firstScrollFlag = false
 
   private lateinit var layoutManager: RecyclerView.LayoutManager
+  private lateinit var dumpAppsInfoResultLauncher: ActivityResultLauncher<String>
+  private var dumpAppsInfoAsMarkDown = false
 
   override fun init() {
     val context = (context as? BaseActivity<*>) ?: return
@@ -105,6 +117,9 @@ class AppListFragment :
               scheduleAppbarLiftingStatus(!top)
             }
           }
+        if (itemDecorationCount == 0) {
+          addItemDecoration(VerticalSpacesItemDecoration(4.dp, ratio = 0f))
+        }
         setHasFixedSize(true)
         FastScrollerBuilder(this).useMd2Style().build()
         addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -163,6 +178,24 @@ class AppListFragment :
     initObserver()
   }
 
+  override fun onAttach(context: Context) {
+    super.onAttach(context)
+    dumpAppsInfoResultLauncher =
+      registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) {
+        it?.let {
+          activity?.let { activity ->
+            runCatching {
+              activity.contentResolver.openOutputStream(it)?.let { os ->
+                homeViewModel.dumpAppsInfo(os, dumpAppsInfoAsMarkDown)
+              }
+            }.onFailure { t ->
+              Timber.e(t)
+            }
+          }
+        }
+      }
+  }
+
   override fun onResume() {
     super.onResume()
     if (hasPackageChanged()) {
@@ -215,6 +248,30 @@ class AppListFragment :
           context?.showToast("USER MODE")
         }
 
+        newText == Constants.COMMAND_DUMP_APPS_INFO_TXT -> {
+          dumpAppsInfoAsMarkDown = false
+          runCatching {
+            val simpleDateFormat = SimpleDateFormat("yyyy-MM-dd, HH:mm:ss", Locale.getDefault())
+            val formattedTime = simpleDateFormat.format(Date(System.currentTimeMillis()))
+            dumpAppsInfoResultLauncher.launch("LibChecker-Dump-Apps-Info-$formattedTime.txt")
+          }.onFailure {
+            Timber.e(it)
+            context?.showToast("Document API not working")
+          }
+        }
+
+        newText == Constants.COMMAND_DUMP_APPS_INFO_MD -> {
+          dumpAppsInfoAsMarkDown = true
+          runCatching {
+            val simpleDateFormat = SimpleDateFormat("yyyy-MM-dd, HH:mm:ss", Locale.getDefault())
+            val formattedTime = simpleDateFormat.format(Date(System.currentTimeMillis()))
+            dumpAppsInfoResultLauncher.launch("LibChecker-Dump-Apps-Info-$formattedTime.md")
+          }.onFailure {
+            Timber.e(it)
+            context?.showToast("Document API not working")
+          }
+        }
+
         else -> {
         }
       }
@@ -254,19 +311,25 @@ class AppListFragment :
         activity?.let {
           advancedMenuBSDFragment?.dismiss()
           advancedMenuBSDFragment = AdvancedMenuBSDFragment().apply {
-            setOnDismissListener {
-              GlobalValues.advancedOptionsLiveData.postValue(GlobalValues.advancedOptions)
-              GlobalValues.itemAdvancedOptionsLiveData.postValue(GlobalValues.itemAdvancedOptions)
-              GlobalValues.isShowSystemApps.postValue(GlobalValues.advancedOptions and AdvancedOptions.SHOW_SYSTEM_APPS > 0)
-              //noinspection NotifyDataSetChanged
-              appAdapter.notifyDataSetChanged()
+            setOnDismissListener { advancedDiff, itemAdvancedDiff ->
+              if (advancedDiff > 0) {
+                lifecycleScope.launch {
+                  GlobalValues.preferencesFlow.emit(Constants.PREF_ADVANCED_OPTIONS to advancedDiff)
+                }
+              }
+
+              if (advancedDiff > 0 || itemAdvancedDiff > 0) {
+                //noinspection NotifyDataSetChanged
+                appAdapter.notifyDataSetChanged()
+              }
               advancedMenuBSDFragment = null
             }
+          }.also { bsd ->
+            bsd.show(
+              it.supportFragmentManager,
+              AdvancedMenuBSDFragment::class.java.name
+            )
           }
-          advancedMenuBSDFragment?.show(
-            it.supportFragmentManager,
-            AdvancedMenuBSDFragment::class.java.name
-          )
         }
       }
     }
@@ -354,86 +417,95 @@ class AppListFragment :
       }.launchIn(lifecycleScope)
     }
 
-    GlobalValues.apply {
-      isShowSystemApps.observe(viewLifecycleOwner) {
+    GlobalValues.preferencesFlow.onEach {
+      if (it.first == Constants.PREF_ADVANCED_OPTIONS) {
         if (isListReady) {
           updateItems()
         }
       }
-    }
+    }.launchIn(lifecycleScope)
   }
 
-  private fun updateItems(highlightRefresh: Boolean = false) =
-    lifecycleScope.launch(Dispatchers.IO) {
-      Timber.d("updateItems")
-      var filterList: MutableList<LCItem> = Repositories.lcRepository.getLCItems().toMutableList()
+  private fun updateItems(highlightRefresh: Boolean = false) {
+    updateItemsJob?.cancel()
+    updateItemsJob = updateItemsImpl(highlightRefresh)
+  }
 
-      val isNonNativeLibApp64Bit = android.os.Process.is64Bit()
-      val options = GlobalValues.advancedOptions
-      if ((options and AdvancedOptions.SHOW_SYSTEM_APPS) == 0) {
-        filterList = filterList.filter { !it.isSystem }.toMutableList()
-      }
-      if ((options and AdvancedOptions.SHOW_SYSTEM_FRAMEWORK_APPS) == 0) {
-        filterList = filterList.filter {
-          (!it.packageName.startsWith("com.android.") && it.packageName != "android") || runCatching {
+  private fun updateItemsImpl(highlightRefresh: Boolean = false) = lifecycleScope.launch(Dispatchers.IO) {
+    delay(250)
+    Timber.d("updateItems")
+    var filterList: MutableList<LCItem> = Repositories.lcRepository.getLCItems().toMutableList()
+
+    val isNonNativeLibApp64Bit = android.os.Process.is64Bit()
+    val options = GlobalValues.advancedOptions
+    if ((options and AdvancedOptions.SHOW_SYSTEM_APPS) == 0) {
+      filterList = filterList.filter { !it.isSystem }.toMutableList()
+    }
+    if ((options and AdvancedOptions.SHOW_SYSTEM_FRAMEWORK_APPS) == 0) {
+      filterList = filterList.filter {
+        (!it.packageName.startsWith("com.android.") && it.packageName != "android") ||
+          runCatching {
             PackageUtils.getPackageInfo(it.packageName).isPreinstalled()
           }.getOrDefault(false).not()
-        }.toMutableList()
-      }
-      if ((options and AdvancedOptions.SHOW_OVERLAYS) == 0) {
-        filterList = filterList.filter { it.abi.toInt() != Constants.OVERLAY }.toMutableList()
-      }
-      if ((options and AdvancedOptions.SHOW_64_BIT_APPS) == 0) {
-        filterList = filterList.filter {
-          val trueAbi = it.abi.mod(Constants.MULTI_ARCH)
-          it.abi.toInt() == Constants.OVERLAY || trueAbi == Constants.X86 || trueAbi == Constants.ARMV7 || trueAbi == Constants.ARMV5 || (trueAbi == Constants.NO_LIBS && !isNonNativeLibApp64Bit)
-        }.toMutableList()
-      }
-      if ((options and AdvancedOptions.SHOW_32_BIT_APPS) == 0) {
-        filterList = filterList.filter {
-          val trueAbi = it.abi.mod(Constants.MULTI_ARCH)
-          it.abi.toInt() == Constants.OVERLAY || trueAbi == Constants.X86_64 || trueAbi == Constants.ARMV8 || (trueAbi == Constants.NO_LIBS && isNonNativeLibApp64Bit)
-        }.toMutableList()
-      }
+      }.toMutableList()
+    }
+    if ((options and AdvancedOptions.SHOW_OVERLAYS) == 0) {
+      filterList = filterList.filter { it.abi.toInt() != Constants.OVERLAY }.toMutableList()
+    }
+    if ((options and AdvancedOptions.SHOW_64_BIT_APPS) == 0) {
+      filterList = filterList.filter {
+        val trueAbi = it.abi.mod(Constants.MULTI_ARCH)
+        it.abi.toInt() == Constants.OVERLAY || !PackageUtils.isAbi64Bit(trueAbi) || (trueAbi == Constants.NO_LIBS && !isNonNativeLibApp64Bit)
+      }.toMutableList()
+    }
+    if ((options and AdvancedOptions.SHOW_32_BIT_APPS) == 0) {
+      filterList = filterList.filter {
+        val trueAbi = it.abi.mod(Constants.MULTI_ARCH)
+        it.abi.toInt() == Constants.OVERLAY || PackageUtils.isAbi64Bit(trueAbi) || (trueAbi == Constants.NO_LIBS && isNonNativeLibApp64Bit)
+      }.toMutableList()
+    }
 
-      val keyword = appAdapter.highlightText
-      if (keyword.isNotEmpty()) {
-        filterList = filterList.filter {
-          it.label.contains(keyword, ignoreCase = true) ||
-            it.packageName.contains(keyword, ignoreCase = true)
-        }.toMutableList()
+    val keyword = appAdapter.highlightText
+    if (keyword.isNotEmpty()) {
+      filterList = filterList.filter {
+        it.label.contains(keyword, ignoreCase = true) ||
+          it.packageName.contains(keyword, ignoreCase = true)
+      }.toMutableList()
 
-        if (HarmonyOsUtil.isHarmonyOs() && keyword.contains("Harmony", true)) {
-          filterList = filterList.filter { it.variant == Constants.VARIANT_HAP }.toMutableList()
-        }
+      if (HarmonyOsUtil.isHarmonyOs() && keyword.contains("Harmony", true)) {
+        filterList = filterList.filter { it.variant == Constants.VARIANT_HAP }.toMutableList()
       }
+    }
 
-      if ((options and AdvancedOptions.SORT_BY_NAME) > 0) {
-        filterList.sortWith(compareBy({ it.abi }, { it.label }))
-      } else if ((options and AdvancedOptions.SORT_BY_UPDATE_TIME) > 0) {
-        filterList.sortByDescending { it.lastUpdatedTime }
-      } else if ((options and AdvancedOptions.SORT_BY_TARGET_API) > 0) {
-        filterList.sortByDescending { it.targetApi }
-      }
+    if ((options and AdvancedOptions.SORT_BY_NAME) > 0) {
+      filterList.sortWith(compareBy({ it.abi }, { it.label }))
+    } else if ((options and AdvancedOptions.SORT_BY_UPDATE_TIME) > 0) {
+      filterList.sortByDescending { it.lastUpdatedTime }
+    } else if ((options and AdvancedOptions.SORT_BY_TARGET_API) > 0) {
+      filterList.sortByDescending { it.targetApi }
+    }
 
-      withContext(Dispatchers.Main) {
-        appAdapter.apply {
-          setDiffNewData(filterList) {
-            if (isDetached || !isBindingInitialized()) {
-              return@setDiffNewData
-            }
-            flip(VF_LIST)
-            isListReady = true
-
-            if (highlightRefresh) {
-              notifyItemRangeChanged(0, data.size)
-            }
-
-            setSpaceFooterView()
+    if (!isActive) {
+      return@launch
+    }
+    withContext(Dispatchers.Main) {
+      appAdapter.apply {
+        setDiffNewData(filterList) {
+          if (isDetached || !isBindingInitialized()) {
+            return@setDiffNewData
           }
+          flip(VF_LIST)
+          isListReady = true
+
+          if (highlightRefresh) {
+            notifyItemRangeChanged(0, data.size)
+          }
+
+          setSpaceFooterView()
         }
       }
     }
+  }
 
   private fun returnTopOfList() {
     binding.list.apply {
@@ -448,6 +520,7 @@ class AppListFragment :
   private fun getSuitableLayoutManagerImpl(configuration: Configuration): RecyclerView.LayoutManager {
     layoutManager = when (configuration.orientation) {
       Configuration.ORIENTATION_PORTRAIT -> LinearLayoutManager(requireContext())
+
       Configuration.ORIENTATION_LANDSCAPE ->
         StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
 

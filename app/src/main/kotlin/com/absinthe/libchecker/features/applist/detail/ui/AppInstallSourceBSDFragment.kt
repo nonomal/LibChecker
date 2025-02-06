@@ -1,13 +1,16 @@
 package com.absinthe.libchecker.features.applist.detail.ui
 
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.text.SpannableString
 import android.text.style.ImageSpan
+import android.view.View
 import androidx.annotation.RequiresApi
 import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import coil.load
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.constant.Constants
@@ -15,12 +18,17 @@ import com.absinthe.libchecker.constant.URLManager
 import com.absinthe.libchecker.database.Repositories
 import com.absinthe.libchecker.features.applist.detail.ui.view.AppInstallSourceBottomSheetView
 import com.absinthe.libchecker.features.applist.detail.ui.view.AppInstallSourceItemView
+import com.absinthe.libchecker.features.applist.detail.ui.view.AppInstallTimeItemView
 import com.absinthe.libchecker.features.applist.detail.ui.view.CenterAlignImageSpan
+import com.absinthe.libchecker.utils.FreezeUtils
 import com.absinthe.libchecker.utils.PackageUtils
+import com.absinthe.libchecker.utils.extensions.PREINSTALLED_TIMESTAMP
 import com.absinthe.libchecker.utils.extensions.getDrawable
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
+import com.absinthe.libchecker.utils.extensions.setLongClickCopiedToClipboard
 import com.absinthe.libraries.utils.base.BaseBottomSheetViewDialogFragment
 import com.absinthe.libraries.utils.view.BottomSheetHeaderView
+import java.text.SimpleDateFormat
 import kotlinx.coroutines.runBlocking
 import rikka.shizuku.Shizuku
 import rikka.sui.Sui
@@ -33,17 +41,18 @@ class AppInstallSourceBSDFragment :
 
   private val packageName by lazy { arguments?.getString(EXTRA_PACKAGE_NAME) }
 
-  override fun initRootView(): AppInstallSourceBottomSheetView =
-    AppInstallSourceBottomSheetView(requireContext())
+  override fun initRootView(): AppInstallSourceBottomSheetView = AppInstallSourceBottomSheetView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
     val packageName = packageName ?: return
     val info = PackageUtils.getInstallSourceInfo(packageName) ?: return
+    val pi = runCatching { PackageUtils.getPackageInfo(packageName) }.getOrNull() ?: return
 
     initOriginatingItemView(root.originatingView, info.originatingPackageName)
     initAppInstallSourceItemView(root.installingView, info.installingPackageName)
+    initAppInstalledTimeItemView(root.installedTimeView, pi)
   }
 
   override fun onDestroyView() {
@@ -60,6 +69,7 @@ class AppInstallSourceBSDFragment :
       item.isGone = true
       return
     }
+    item.packageView.container.abiInfo.isVisible = false
     item.packageView.container.icon.load(com.absinthe.lc.rulesbundle.R.drawable.ic_lib_shizuku)
     if (!PackageUtils.isAppInstalled(Constants.PackageNames.SHIZUKU) && !Sui.isSui()) {
       item.packageView.container.appName.text =
@@ -173,6 +183,7 @@ class AppInstallSourceBSDFragment :
     } else {
       item.packageView.container.abiInfo.text = str
     }
+    item.packageView.container.abiInfo.isVisible = true
 
     if (targetLCItem.variant == Constants.VARIANT_HAP) {
       item.packageView.container.setBadge(R.drawable.ic_harmony_badge)
@@ -188,6 +199,31 @@ class AppInstallSourceBSDFragment :
 
     Shizuku.removeRequestPermissionResultListener(this)
     Shizuku.removeBinderReceivedListener(this)
+  }
+
+  private fun initAppInstalledTimeItemView(item: AppInstallTimeItemView, pi: PackageInfo) {
+    if (context == null || FreezeUtils.isAppFrozen(pi.packageName)) {
+      item.isGone = true
+      return
+    }
+
+    val firstInstalledTime = pi.firstInstallTime
+    val lastUpdatedTime = pi.lastUpdateTime
+    item.contentView.apply {
+      if (firstInstalledTime <= PREINSTALLED_TIMESTAMP) {
+        firstInstalledView.libSize.text = getString(R.string.snapshot_preinstalled_app)
+      } else {
+        firstInstalledView.libSize.text =
+          SimpleDateFormat.getDateTimeInstance().format(firstInstalledTime)
+      }
+      if (lastUpdatedTime <= PREINSTALLED_TIMESTAMP) {
+        lastUpdatedView.libSize.text = getString(R.string.snapshot_preinstalled_app)
+      } else {
+        lastUpdatedView.libSize.text =
+          SimpleDateFormat.getDateTimeInstance().format(lastUpdatedTime)
+      }
+      (parent as? View)?.setLongClickCopiedToClipboard(item.contentView.getAllContentText())
+    }
   }
 
   override fun onBinderReceived() {

@@ -1,51 +1,43 @@
 package com.absinthe.libchecker.features.applist.detail.ui.impl
 
+import androidx.lifecycle.lifecycleScope
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.NATIVE
 import com.absinthe.libchecker.databinding.FragmentLibNativeBinding
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.Referable
 import com.absinthe.libchecker.features.applist.detail.ui.EXTRA_PACKAGE_NAME
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibStringDiffUtil
-import com.absinthe.libchecker.features.applist.detail.ui.base.BaseFilterAnalysisFragment
+import com.absinthe.libchecker.features.applist.detail.ui.base.BaseDetailFragment
 import com.absinthe.libchecker.features.applist.detail.ui.base.EXTRA_TYPE
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.utils.extensions.putArguments
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
-class NativeAnalysisFragment : BaseFilterAnalysisFragment<FragmentLibNativeBinding>(), Referable {
-
-  private var itemsList: List<LibStringItemChip>? = null
+class NativeAnalysisFragment :
+  BaseDetailFragment<FragmentLibNativeBinding>(),
+  Referable {
 
   override fun getRecyclerView() = binding.list
   override val needShowLibDetailDialog = true
+
+  override suspend fun getItems(): List<LibStringItemChip> {
+    val flow = viewModel.nativeLibItems
+    return flow.value ?: flow.filterNotNull().first()
+  }
+
+  override fun onItemsAvailable(items: List<LibStringItemChip>) {
+    setItems(items)
+  }
 
   override fun init() {
     binding.apply {
       list.apply {
         adapter = this@NativeAnalysisFragment.adapter
-      }
-    }
-
-    viewModel.nativeLibItems.observe(viewLifecycleOwner) {
-      if (it.isEmpty()) {
-        emptyView.text.text = getString(R.string.empty_list)
-      } else {
-        adapter.processMap = viewModel.nativeSourceMap
-        itemsList = it
-        if (viewModel.queriedText?.isNotEmpty() == true) {
-          filterList(viewModel.queriedText!!)
-        } else {
-          adapter.setDiffNewData(it.toMutableList(), afterListReadyTask)
-        }
-        if (viewModel.queriedProcess?.isNotEmpty() == true) {
-          filterItems(viewModel.queriedProcess!!)
-        }
-      }
-
-      if (!isListReady) {
-        viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-        viewModel.itemsCountList[type] = it.size
-        isListReady = true
       }
     }
 
@@ -56,38 +48,46 @@ class NativeAnalysisFragment : BaseFilterAnalysisFragment<FragmentLibNativeBindi
     }
 
     viewModel.apply {
-      packageInfoLiveData.observe(viewLifecycleOwner) {
+      packageInfoStateFlow.onEach {
         if (it != null) {
           viewModel.initSoAnalysisData()
         }
-      }
-      is64Bit.observe(viewLifecycleOwner) {
+      }.launchIn(lifecycleScope)
+      is64Bit.onEach {
         if (it != null) {
           adapter.set64Bit(it)
         }
+      }.launchIn(lifecycleScope)
+
+      packageInfoStateFlow.value?.run {
+        nativeLibItems.value ?: run { initSoAnalysisData() }
       }
     }
   }
 
   override fun onVisibilityChanged(visible: Boolean) {
     if (context != null && visible) {
-      viewModel.processMapLiveData.postValue(viewModel.nativeSourceMap)
+      viewModel.updateProcessMap(viewModel.nativeSourceMap)
     } else {
-      viewModel.processMapLiveData.postValue(viewModel.processesMap)
+      viewModel.updateProcessMap(viewModel.processesMap)
     }
     super.onVisibilityChanged(visible)
   }
 
-  override fun getFilterList(process: String?): List<LibStringItemChip>? {
-    return if (process.isNullOrEmpty()) {
-      itemsList
+  private fun setItems(list: List<LibStringItemChip>) {
+    if (list.isEmpty()) {
+      emptyView.text.text = getString(R.string.empty_list)
     } else {
-      itemsList?.filter { it.item.process == process }
+      adapter.processMap = viewModel.nativeSourceMap
+      lifecycleScope.launch(Dispatchers.IO) {
+        setItemsWithFilter(viewModel.queriedText, viewModel.queriedProcess)
+      }
     }
-  }
 
-  override fun getFilterListByText(text: String): List<LibStringItemChip>? {
-    return viewModel.nativeLibItems.value?.filter { it.item.name.contains(text, true) }
+    if (!isListReady) {
+      viewModel.updateItemsCountStateFlow(type, list.size)
+      isListReady = true
+    }
   }
 
   companion object {

@@ -19,8 +19,7 @@ import com.absinthe.libchecker.utils.extensions.getResourceIdByAttr
 import com.absinthe.libchecker.view.AViewGroup
 import com.google.android.material.card.MaterialCardView
 
-class SnapshotDashboardView(context: Context) :
-  MaterialCardView(context, null, R.style.AlbumMaterialCard) {
+class SnapshotDashboardView(context: Context) : MaterialCardView(context, null, R.style.AlbumMaterialCard) {
 
   val container = SnapshotDashboardContainerView(context).apply {
     val padding = context.getDimensionPixelSize(R.dimen.normal_padding)
@@ -30,8 +29,8 @@ class SnapshotDashboardView(context: Context) :
 
   init {
     layoutParams = ViewGroup.LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     )
     radius = 8.dp.toFloat()
     setCardBackgroundColor(context.getColorStateListByAttr(com.google.android.material.R.attr.colorSecondaryContainer))

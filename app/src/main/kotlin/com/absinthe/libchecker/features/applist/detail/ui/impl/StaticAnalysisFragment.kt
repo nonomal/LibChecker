@@ -1,16 +1,22 @@
 package com.absinthe.libchecker.features.applist.detail.ui.impl
 
+import androidx.lifecycle.lifecycleScope
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.STATIC
 import com.absinthe.libchecker.compat.VersionCompat
 import com.absinthe.libchecker.databinding.FragmentLibNativeBinding
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.detail.ui.EXTRA_PACKAGE_NAME
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibStringDiffUtil
 import com.absinthe.libchecker.features.applist.detail.ui.base.BaseDetailFragment
 import com.absinthe.libchecker.features.applist.detail.ui.base.EXTRA_TYPE
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.utils.extensions.putArguments
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import rikka.core.util.ClipboardUtils
 
 class StaticAnalysisFragment : BaseDetailFragment<FragmentLibNativeBinding>() {
@@ -18,28 +24,30 @@ class StaticAnalysisFragment : BaseDetailFragment<FragmentLibNativeBinding>() {
   override fun getRecyclerView() = binding.list
   override val needShowLibDetailDialog = true
 
+  override suspend fun getItems(): List<LibStringItemChip> {
+    val flow = viewModel.staticLibItems
+    return flow.value ?: flow.filterNotNull().first()
+  }
+
+  override fun onItemsAvailable(items: List<LibStringItemChip>) {
+    if (items.isEmpty()) {
+      emptyView.text.text = getString(R.string.empty_list)
+    } else {
+      lifecycleScope.launch(Dispatchers.IO) {
+        setItemsWithFilter(viewModel.queriedText, null)
+      }
+    }
+
+    if (!isListReady) {
+      viewModel.updateItemsCountStateFlow(type, items.size)
+      isListReady = true
+    }
+  }
+
   override fun init() {
     binding.apply {
       list.apply {
         adapter = this@StaticAnalysisFragment.adapter
-      }
-    }
-
-    viewModel.staticLibItems.observe(viewLifecycleOwner) {
-      if (it.isEmpty()) {
-        emptyView.text.text = getString(R.string.empty_list)
-      } else {
-        if (viewModel.queriedText?.isNotEmpty() == true) {
-          filterList(viewModel.queriedText!!)
-        } else {
-          adapter.setDiffNewData(it.toMutableList(), afterListReadyTask)
-        }
-      }
-
-      if (!isListReady) {
-        viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-        viewModel.itemsCountList[type] = it.size
-        isListReady = true
       }
     }
 
@@ -54,15 +62,17 @@ class StaticAnalysisFragment : BaseDetailFragment<FragmentLibNativeBinding>() {
       setEmptyView(emptyView)
     }
 
-    viewModel.packageInfoLiveData.observe(viewLifecycleOwner) {
-      if (it != null) {
-        viewModel.initStaticData()
+    viewModel.apply {
+      packageInfoStateFlow.onEach {
+        if (it != null) {
+          viewModel.initStaticData()
+        }
+      }.launchIn(lifecycleScope)
+
+      packageInfoStateFlow.value?.run {
+        staticLibItems.value ?: run { initStaticData() }
       }
     }
-  }
-
-  override fun getFilterListByText(text: String): List<LibStringItemChip>? {
-    return viewModel.staticLibItems.value?.filter { it.item.name.contains(text, true) }
   }
 
   companion object {

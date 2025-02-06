@@ -12,11 +12,13 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.absinthe.libchecker.BuildConfig
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.compat.PackageManagerCompat
+import com.absinthe.libchecker.constant.Constants
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.AppInfoAdapter
 import com.absinthe.libchecker.features.applist.detail.ui.view.AppInfoBottomSheetView
 import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.Toasty
 import com.absinthe.libchecker.utils.extensions.dp
+import com.absinthe.libchecker.utils.extensions.setLongClickCopiedToClipboard
 import com.absinthe.libchecker.utils.showToast
 import com.absinthe.libraries.utils.base.BaseBottomSheetViewDialogFragment
 import com.absinthe.libraries.utils.view.BottomSheetHeaderView
@@ -29,8 +31,7 @@ import java.io.File
  * </pre>
  */
 
-class AppInfoBottomSheetDialogFragment :
-  BaseBottomSheetViewDialogFragment<AppInfoBottomSheetView>() {
+class AppInfoBottomSheetDialogFragment : BaseBottomSheetViewDialogFragment<AppInfoBottomSheetView>() {
 
   private val packageName by lazy { arguments?.getString(EXTRA_PACKAGE_NAME) }
   private val aiAdapter = AppInfoAdapter()
@@ -54,7 +55,7 @@ class AppInfoBottomSheetDialogFragment :
         } else {
           PackageUtils.startLaunchAppActivity(requireContext(), packageName)
         }
-      } catch (e: Exception) {
+      } catch (_: Exception) {
         activity?.let {
           AlternativeLaunchBSDFragment().apply {
             arguments = bundleOf(
@@ -67,13 +68,16 @@ class AppInfoBottomSheetDialogFragment :
         dismiss()
       }
     }
+    packageName?.let {
+      root.launch.setLongClickCopiedToClipboard(PackageUtils.getLauncherActivity(it))
+    }
     root.setting.setOnClickListener {
       try {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
           .setData(Uri.parse("package:$packageName"))
           .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
-      } catch (e: Exception) {
+      } catch (_: Exception) {
         context?.showToast(R.string.toast_cant_open_app)
       } finally {
         dismiss()
@@ -86,7 +90,9 @@ class AppInfoBottomSheetDialogFragment :
     }
 
     aiAdapter.also { adapter ->
-      adapter.setList(getShowAppInfoList() + getShowAppSourceList())
+      val list = (getShowAppInfoList() + getShowAppSourceList() + getShowMarketList())
+        .distinctBy { it.pii.packageName }
+      adapter.setList(list)
       adapter.setOnItemClickListener { _, _, position ->
         adapter.data[position].let {
           runCatching {
@@ -121,7 +127,7 @@ class AppInfoBottomSheetDialogFragment :
   private fun getShowAppSourceList(): List<AppInfoAdapter.AppInfoItem> {
     val pkg = packageName ?: return emptyList()
     val sourceDir = runCatching {
-      File(PackageUtils.getPackageInfo(pkg).applicationInfo.sourceDir).parent
+      File(PackageUtils.getPackageInfo(pkg).applicationInfo!!.sourceDir).parent
     }.getOrNull() ?: return emptyList()
 
     return PackageManagerCompat.queryIntentActivities(
@@ -129,7 +135,10 @@ class AppInfoBottomSheetDialogFragment :
         it.setType(DocumentsContract.Document.MIME_TYPE_DIR)
       },
       PackageManager.MATCH_DEFAULT_ONLY
-    ).filter { it.activityInfo.packageName != BuildConfig.APPLICATION_ID }
+    ).filter {
+      // it.activityInfo.packageName != BuildConfig.APPLICATION_ID
+      it.activityInfo.packageName == Constants.PackageNames.MATERIAL_FILES
+    }
       .map {
         AppInfoAdapter.AppInfoItem(
           it.activityInfo,
@@ -137,6 +146,24 @@ class AppInfoBottomSheetDialogFragment :
             .setType(DocumentsContract.Document.MIME_TYPE_DIR)
             .setComponent(ComponentName(it.activityInfo.packageName, it.activityInfo.name))
             .putExtra("org.openintents.extra.ABSOLUTE_PATH", sourceDir)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
+      }
+  }
+
+  private fun getShowMarketList(): List<AppInfoAdapter.AppInfoItem> {
+    return PackageManagerCompat.queryIntentActivities(
+      Intent(Intent.ACTION_VIEW).also {
+        it.data = Uri.parse("market://details?id=$packageName")
+      },
+      PackageManager.MATCH_DEFAULT_ONLY
+    ).filter { it.activityInfo.packageName != BuildConfig.APPLICATION_ID }
+      .map {
+        AppInfoAdapter.AppInfoItem(
+          it.activityInfo,
+          Intent(Intent.ACTION_VIEW)
+            .setData(Uri.parse("market://details?id=$packageName"))
+            .setComponent(ComponentName(it.activityInfo.packageName, it.activityInfo.name))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         )
       }

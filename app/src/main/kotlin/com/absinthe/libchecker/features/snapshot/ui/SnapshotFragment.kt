@@ -53,7 +53,7 @@ import com.absinthe.libchecker.features.snapshot.ui.view.SnapshotDashboardView
 import com.absinthe.libchecker.services.IShootService
 import com.absinthe.libchecker.services.OnShootListener
 import com.absinthe.libchecker.services.ShootService
-import com.absinthe.libchecker.ui.adapter.HorizontalSpacesItemDecoration
+import com.absinthe.libchecker.ui.adapter.VerticalSpacesItemDecoration
 import com.absinthe.libchecker.ui.base.BaseActivity
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
 import com.absinthe.libchecker.ui.base.BaseListControllerFragment
@@ -69,12 +69,14 @@ import com.absinthe.libchecker.utils.extensions.setSpaceFooterView
 import com.absinthe.libraries.utils.utils.AntiShakeUtils
 import com.microsoft.appcenter.analytics.Analytics
 import com.microsoft.appcenter.analytics.EventProperties
-import java.util.LinkedList
-import java.util.Queue
+import java.util.Locale
+import java.util.concurrent.LinkedBlockingQueue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import rikka.widget.borderview.BorderView
 import timber.log.Timber
@@ -93,12 +95,14 @@ class SnapshotFragment :
   private var shouldCompare = true and ShootService.isComputing.not()
   private var shootServiceStarted = false
   private var keyword: String = ""
+  private var currentTimeStamp = GlobalValues.snapshotTimestamp
+  private var items = emptyList<SnapshotDiffItem>()
 
   private var shootBinder: IShootService? = null
   private val shootListener = object : OnShootListener.Stub() {
     override fun onShootFinished(timestamp: Long) {
       lifecycleScope.launch(Dispatchers.Main) {
-        viewModel.timestamp.value = timestamp
+        viewModel.changeTimeStamp(timestamp)
         compareDiff()
         shouldCompare = true
       }
@@ -128,7 +132,8 @@ class SnapshotFragment :
       shootBinder = null
     }
   }
-  private val packageQueue: Queue<Pair<String?, String?>> by lazy { LinkedList() }
+  private val packageQueue by lazy { LinkedBlockingQueue<Pair<String?, String?>>() }
+  private var dequeuePackagesJob: Job? = null
   private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
   private var advancedMenuBSDFragment: SnapshotMenuBSDFragment? = null
 
@@ -142,7 +147,9 @@ class SnapshotFragment :
         layoutParams = ViewGroup.MarginLayoutParams(
           ViewGroup.LayoutParams.MATCH_PARENT,
           ViewGroup.LayoutParams.WRAP_CONTENT
-        )
+        ).also {
+          it.setMargins(8.dp, 0, 8.dp, 0)
+        }
       }
 
     dashboard.setOnClickListener {
@@ -159,7 +166,7 @@ class SnapshotFragment :
                 val item = timeStampList[position]
                 GlobalValues.snapshotTimestamp = item.timestamp
                 lifecycleScope.launch(Dispatchers.Main) {
-                  viewModel.timestamp.value = item.timestamp
+                  viewModel.changeTimeStamp(item.timestamp)
                   flip(VF_LOADING)
                   dismiss()
                 }
@@ -242,11 +249,7 @@ class SnapshotFragment :
           }
 
         if (itemDecorationCount == 0) {
-          addItemDecoration(
-            HorizontalSpacesItemDecoration(
-              resources.getDimension(R.dimen.normal_padding).toInt() / 2
-            )
-          )
+          addItemDecoration(VerticalSpacesItemDecoration(4.dp, ratio = 0f))
         }
         scrollToPosition(0)
       }
@@ -260,23 +263,14 @@ class SnapshotFragment :
     }
 
     viewModel.apply {
-      timestamp.observe(viewLifecycleOwner) {
-        if (it != 0L) {
-          dashboard.container.tvSnapshotTimestampText.text = getFormatDateString(it)
-        } else {
-          dashboard.container.tvSnapshotTimestampText.text =
-            getString(R.string.snapshot_none)
-          snapshotDiffItems.value = emptyList()
-          flip(VF_LIST)
-        }
-      }
       allSnapshots.onEach {
         if (shouldCompare) {
           compareDiff()
         }
       }.launchIn(lifecycleScope)
-      snapshotDiffItems.observe(viewLifecycleOwner) { list ->
-        updateItems(list)
+      snapshotDiffItemsFlow.onEach {
+        items = it
+        updateItems(it)
 
         lifecycleScope.launch(Dispatchers.IO) {
           delay(250)
@@ -289,10 +283,7 @@ class SnapshotFragment :
             }
           }
         }
-      }
-      comparingProgressLiveData.observe(viewLifecycleOwner) {
-        binding.progressIndicator.setProgressCompat(it, it != 1)
-      }
+      }.launchIn(lifecycleScope)
     }
     homeViewModel.effect.onEach {
       when (it) {
@@ -311,17 +302,37 @@ class SnapshotFragment :
       when (it) {
         is SnapshotViewModel.Effect.DashboardCountChange -> {
           dashboard.container.tvSnapshotAppsCountText.text =
-            String.format("%d / %d", it.snapshotCount, it.appCount)
+            String.format(Locale.getDefault(), "%d / %d", it.snapshotCount, it.appCount)
+        }
+
+        is SnapshotViewModel.Effect.TimeStampChange -> {
+          currentTimeStamp = it.timestamp
+          if (it.timestamp != 0L) {
+            dashboard.container.tvSnapshotTimestampText.text = viewModel.getFormatDateString(it.timestamp)
+          } else {
+            dashboard.container.tvSnapshotTimestampText.text = getString(R.string.snapshot_none)
+            viewModel.snapshotDiffItemsFlow.emit(emptyList())
+            flip(VF_LIST)
+          }
+        }
+
+        is SnapshotViewModel.Effect.DiffItemChange -> {
+          val newItems = adapter.data.toMutableList()
+          newItems.removeIf { item -> item.packageName == it.item.packageName }
+          newItems.add(it.item)
+          items = newItems
+          updateItems(newItems)
+        }
+
+        is SnapshotViewModel.Effect.ComparingProgressChange -> {
+          binding.progressIndicator.setProgressCompat(it.progress, it.progress != 1)
         }
 
         else -> {}
       }
     }.launchIn(lifecycleScope)
-    GlobalValues.snapshotOptionsLiveData.observe(viewLifecycleOwner) {
-      viewModel.snapshotDiffItems.value?.let { items ->
-        updateItems(items, true)
-      }
-    }
+
+    viewModel.changeTimeStamp(GlobalValues.snapshotTimestamp)
   }
 
   override fun onAttach(context: Context) {
@@ -359,8 +370,8 @@ class SnapshotFragment :
       viewModel.compareDiff(GlobalValues.snapshotTimestamp)
     }
 
-    if (viewModel.timestamp.value != GlobalValues.snapshotTimestamp) {
-      viewModel.timestamp.value = GlobalValues.snapshotTimestamp
+    if (currentTimeStamp != GlobalValues.snapshotTimestamp) {
+      viewModel.changeTimeStamp(GlobalValues.snapshotTimestamp)
       flip(VF_LOADING)
       viewModel.compareDiff(GlobalValues.snapshotTimestamp, shouldClearDiff = true)
     }
@@ -520,6 +531,7 @@ class SnapshotFragment :
           }
 
           Constants.SNAPSHOT_KEEP -> computeNewSnapshot(false)
+
           Constants.SNAPSHOT_DISCARD -> computeNewSnapshot(true)
         }
       }
@@ -527,8 +539,11 @@ class SnapshotFragment :
       activity?.let {
         advancedMenuBSDFragment?.dismiss()
         advancedMenuBSDFragment = SnapshotMenuBSDFragment().apply {
-          setOnDismissListener {
-            GlobalValues.snapshotOptionsLiveData.postValue(GlobalValues.snapshotOptions)
+          setOnDismissListener { optionsDiff ->
+            if (optionsDiff > 0) {
+              updateItems(adapter.data, true)
+            }
+            advancedMenuBSDFragment = null
           }
         }
         advancedMenuBSDFragment?.show(
@@ -570,7 +585,7 @@ class SnapshotFragment :
   }
 
   private fun compareDiff() {
-    viewModel.timestamp.value = GlobalValues.snapshotTimestamp
+    viewModel.changeTimeStamp(GlobalValues.snapshotTimestamp)
     isSnapshotDatabaseItemsReady = true
 
     viewModel.getDashboardCount(GlobalValues.snapshotTimestamp, true)
@@ -578,11 +593,16 @@ class SnapshotFragment :
     isSnapshotDatabaseItemsReady = false
   }
 
-  @Synchronized
-  private fun dequeuePackages() = lifecycleScope.launch(Dispatchers.IO) {
-    while (packageQueue.isNotEmpty()) {
-      packageQueue.poll()?.first?.let {
-        viewModel.compareItemDiff(GlobalValues.snapshotTimestamp, it)
+  private fun dequeuePackages() {
+    if (dequeuePackagesJob?.isActive == true) {
+      return
+    }
+    dequeuePackagesJob = lifecycleScope.launch(Dispatchers.IO) {
+      while (isActive) {
+        packageQueue.take()?.first?.let {
+          Timber.d("Dequeue package: $it")
+          viewModel.compareItemDiff(GlobalValues.snapshotTimestamp, it)
+        }
       }
     }
   }
@@ -592,6 +612,7 @@ class SnapshotFragment :
   private fun getSuitableLayoutManagerImpl(configuration: Configuration): RecyclerView.LayoutManager {
     layoutManager = when (configuration.orientation) {
       Configuration.ORIENTATION_PORTRAIT -> LinearLayoutManager(requireContext())
+
       Configuration.ORIENTATION_LANDSCAPE ->
         StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
 
@@ -615,21 +636,19 @@ class SnapshotFragment :
 
   override fun onQueryTextChange(newText: String?): Boolean {
     if (keyword != newText) {
-      keyword = newText ?: ""
+      keyword = newText.orEmpty()
       adapter.highlightText = keyword
-      viewModel.snapshotDiffItems.value?.let { items ->
-        val list = if (keyword.isEmpty()) {
-          items
-        } else {
-          items.asSequence()
-            .filter {
-              it.packageName.contains(keyword, ignoreCase = true) ||
-                it.labelDiff.old.contains(keyword, ignoreCase = true) ||
-                it.labelDiff.new?.contains(keyword, ignoreCase = true) == true
-            }.toList()
-        }
-        updateItems(list, true)
+      val list = if (keyword.isEmpty()) {
+        items
+      } else {
+        items.asSequence()
+          .filter {
+            it.packageName.contains(keyword, ignoreCase = true) ||
+              it.labelDiff.old.contains(keyword, ignoreCase = true) ||
+              it.labelDiff.new?.contains(keyword, ignoreCase = true) == true
+          }.toList()
       }
+      updateItems(list, true)
     }
     return false
   }

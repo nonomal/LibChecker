@@ -14,16 +14,14 @@ class LibReferenceMenuBSDFragment : BaseBottomSheetViewDialogFragment<LibReferen
   private val previousAdvancedOptions = GlobalValues.libReferenceOptions
   private val optionsViewMap = mutableMapOf<Int, LibReferenceMenuItemView>()
 
-  private var onDismissCallback: () -> Unit = {}
+  private var onDismissCallback: (optionsDiff: Int) -> Unit = {}
 
   override fun initRootView(): LibReferenceMenuBSDView = LibReferenceMenuBSDView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.8).toInt()
-    }
+    maxPeekHeightPercentage = 0.8f
     optionsViewMap[LibReferenceOptions.NATIVE_LIBS] = root.addOptionItemView(R.string.ref_category_native, LibReferenceOptions.NATIVE_LIBS)
     optionsViewMap[LibReferenceOptions.SERVICES] = root.addOptionItemView(R.string.ref_category_service, LibReferenceOptions.SERVICES)
     optionsViewMap[LibReferenceOptions.ACTIVITIES] = root.addOptionItemView(R.string.ref_category_activity, LibReferenceOptions.ACTIVITIES)
@@ -36,9 +34,7 @@ class LibReferenceMenuBSDFragment : BaseBottomSheetViewDialogFragment<LibReferen
     optionsViewMap[LibReferenceOptions.ONLY_NOT_MARKED] = root.addOptionItemView(R.string.ref_category_only_not_marked, LibReferenceOptions.ONLY_NOT_MARKED)
 
     dialog?.setOnDismissListener {
-      if (GlobalValues.libReferenceOptions != previousAdvancedOptions) {
-        onDismissCallback()
-      }
+      onDismissCallback(previousAdvancedOptions.xor(GlobalValues.libReferenceOptions))
     }
   }
 
@@ -54,7 +50,7 @@ class LibReferenceMenuBSDFragment : BaseBottomSheetViewDialogFragment<LibReferen
     }
   }
 
-  fun setOnDismissListener(action: () -> Unit) {
+  fun setOnDismissListener(action: (optionsDiff: Int) -> Unit) {
     onDismissCallback = action
   }
 }

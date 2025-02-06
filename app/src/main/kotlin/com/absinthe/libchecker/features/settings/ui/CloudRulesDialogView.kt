@@ -18,8 +18,11 @@ import com.absinthe.libraries.utils.view.HeightAnimatableViewFlipper
 import com.airbnb.lottie.LottieAnimationView
 import com.airbnb.lottie.LottieDrawable
 import com.google.android.material.button.MaterialButton
+import java.io.File
 
-class CloudRulesDialogView(context: Context) : AViewGroup(context), IHeaderView {
+class CloudRulesDialogView(context: Context) :
+  AViewGroup(context),
+  IHeaderView {
 
   private val header = BottomSheetHeaderView(context).apply {
     layoutParams =
@@ -39,9 +42,9 @@ class CloudRulesDialogView(context: Context) : AViewGroup(context), IHeaderView 
     layoutParams = FrameLayout.LayoutParams(size, size).also {
       it.gravity = Gravity.CENTER
     }
-    imageAssetsFolder = "/"
+    imageAssetsFolder = File.separator
     repeatCount = LottieDrawable.INFINITE
-    setAnimation("anim/gray-down-arrow.json")
+    setAnimation("anim/gray-down-arrow.json.zip")
   }
 
   val cloudRulesContentView = CloudRulesContentView(context).apply {

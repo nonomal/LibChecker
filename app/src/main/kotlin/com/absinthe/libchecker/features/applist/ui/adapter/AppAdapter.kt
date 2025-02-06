@@ -17,7 +17,6 @@ import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.extensions.addStrikeThroughSpan
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.absinthe.libchecker.utils.extensions.getColorStateListByAttr
-import com.absinthe.libchecker.utils.extensions.getDimensionPixelSize
 import com.absinthe.libchecker.utils.extensions.getDrawable
 import com.chad.library.adapter.base.viewholder.BaseViewHolder
 
@@ -25,26 +24,26 @@ class AppAdapter(private val cardMode: CardMode = CardMode.NORMAL) : HighlightAd
 
   override fun onCreateDefViewHolder(parent: ViewGroup, viewType: Int): BaseViewHolder {
     return createBaseViewHolder(
-      AppItemView(context, true).apply {
+      AppItemView(context).apply {
         layoutParams = ViewGroup.MarginLayoutParams(
           ViewGroup.LayoutParams.MATCH_PARENT,
           ViewGroup.LayoutParams.WRAP_CONTENT
-        ).also {
-          val margin = context.getDimensionPixelSize(R.dimen.main_card_margin)
-          it.setMargins(0, margin, 0, margin)
-        }
+        )
       }
     )
   }
 
   override fun convert(holder: BaseViewHolder, item: LCItem) {
-    if (cardMode == CardMode.DEMO) {
-      (holder.itemView as AppItemView).apply {
+    val root = holder.itemView as AppItemView
+    root.apply {
+      if (cardMode == CardMode.DEMO) {
         strokeColor = context.getColorByAttr(com.google.android.material.R.attr.colorOutline)
         setCardBackgroundColor(context.getColorStateListByAttr(com.google.android.material.R.attr.colorSecondaryContainer))
+      } else {
+        radius = 0f
       }
     }
-    (holder.itemView as AppItemView).container.apply {
+    root.container.apply {
       val packageInfo = if (item.packageName != Constants.EXAMPLE_PACKAGE) {
         val packageInfo = runCatching {
           PackageUtils.getPackageInfo(item.packageName)
@@ -105,12 +104,15 @@ class AppAdapter(private val cardMode: CardMode = CardMode.NORMAL) : HighlightAd
         item.packageName == Constants.EXAMPLE_PACKAGE -> {
           setBadge(null)
         }
+
         item.variant == Constants.VARIANT_HAP -> {
           setBadge(R.drawable.ic_harmony_badge)
         }
+
         FreezeUtils.isAppFrozen(item.packageName) -> {
           setBadge(R.drawable.ic_disabled_package)
         }
+
         else -> {
           setBadge(null)
         }
