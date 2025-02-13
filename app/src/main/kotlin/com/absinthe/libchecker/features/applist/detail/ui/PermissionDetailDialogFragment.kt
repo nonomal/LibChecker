@@ -15,16 +15,14 @@ import timber.log.Timber
 
 const val EXTRA_ORIG_PERM_NAME = "EXTRA_ORIG_PERM_NAME"
 
-class PermissionDetailDialogFragment :
-  BaseBottomSheetViewDialogFragment<PermissionInfoBottomSheetView>() {
+class PermissionDetailDialogFragment : BaseBottomSheetViewDialogFragment<PermissionInfoBottomSheetView>() {
 
   private val origPermName by lazy {
     arguments?.getString(EXTRA_ORIG_PERM_NAME).orEmpty()
       .substringBefore(" ") // remove maxSdkVersion suffix
   }
 
-  override fun initRootView(): PermissionInfoBottomSheetView =
-    PermissionInfoBottomSheetView(requireContext())
+  override fun initRootView(): PermissionInfoBottomSheetView = PermissionInfoBottomSheetView(requireContext())
 
   override fun init() {
     root.apply {

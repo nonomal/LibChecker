@@ -63,7 +63,8 @@ class CheckableChipView @JvmOverloads constructor(
   context: Context,
   attrs: AttributeSet? = null,
   defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr), Checkable {
+) : View(context, attrs, defStyleAttr),
+  Checkable {
 
   companion object {
     private const val CHECKING_DURATION = 350L // ms
@@ -486,8 +487,7 @@ class CheckableChipView @JvmOverloads constructor(
     afterChangeActions: ((newValue: T) -> Unit)? = null
   ) = object : ObservableProperty<T>(default) {
 
-    override fun beforeChange(property: KProperty<*>, oldValue: T, newValue: T): Boolean =
-      newValue != oldValue
+    override fun beforeChange(property: KProperty<*>, oldValue: T, newValue: T): Boolean = newValue != oldValue
 
     override fun afterChange(property: KProperty<*>, oldValue: T, newValue: T) {
       afterChangeActions?.invoke(newValue)

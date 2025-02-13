@@ -100,6 +100,19 @@ class ShootService : LifecycleService() {
     ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
   }
 
+  override fun onTimeout(startId: Int) {
+    super.onTimeout(startId)
+    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    stopSelf()
+  }
+
+  override fun onTimeout(startId: Int, fgsType: Int) {
+    super.onTimeout(startId, fgsType)
+    // https://developer.android.com/about/versions/15/behavior-changes-15?hl=zh-cn#datasync-timeout
+    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    stopSelf()
+  }
+
   private fun showNotification() {
     initBuilder()
 
@@ -115,7 +128,7 @@ class ShootService : LifecycleService() {
         startForeground(
           notificationIdShoot,
           builder.build(),
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
         )
       } else {
         startForeground(notificationIdShoot, builder.build())
@@ -164,17 +177,20 @@ class ShootService : LifecycleService() {
     Timber.i("computeSnapshots: dropPrevious = $dropPrevious")
     _isShooting = true
 
-    val notificationPermissionGranted = !OsUtils.atLeastT() || ContextCompat.checkSelfPermission(
-      this@ShootService,
-      Manifest.permission.POST_NOTIFICATIONS
-    ) == PackageManager.PERMISSION_GRANTED
+    val notificationPermissionGranted = !OsUtils.atLeastT() ||
+      ContextCompat.checkSelfPermission(
+        this@ShootService,
+        Manifest.permission.POST_NOTIFICATIONS
+      ) == PackageManager.PERMISSION_GRANTED
     areNotificationsEnabled =
-      notificationManager.areNotificationsEnabled() && notificationPermissionGranted
+      notificationManager.areNotificationsEnabled() &&
+      notificationPermissionGranted
 
     notificationManager.cancel(notificationIdShootSuccess)
     showNotification()
 
     if (areNotificationsEnabled) {
+      builder.foregroundServiceBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
       notificationManager.notify(notificationIdShoot, builder.build())
     }
 
@@ -187,7 +203,6 @@ class ShootService : LifecycleService() {
 
     val size = appList.size
     val dbList = mutableListOf<SnapshotItem>()
-    val exceptionInfoList = mutableListOf<PackageInfo>()
     val currentSnapshotTimestamp = GlobalValues.snapshotTimestamp
     var count = 0
 
@@ -204,7 +219,7 @@ class ShootService : LifecycleService() {
 
     for (info in appList) {
       try {
-        ai = info.applicationInfo
+        ai = info.applicationInfo!!
         dbSnapshotItem = repository.getSnapshot(currentSnapshotTimestamp, info.packageName)
 
         if (dbSnapshotItem?.versionCode == info.getVersionCode() &&
@@ -220,13 +235,16 @@ class ShootService : LifecycleService() {
             }
           )
         } else {
+          val activitiesPi = PackageUtils.getPackageInfo(info.packageName, PackageManager.GET_ACTIVITIES)
+          val srpPi = PackageUtils.getPackageInfo(info.packageName, PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS)
+          val miscPi = PackageUtils.getPackageInfo(info.packageName, PackageManager.GET_PERMISSIONS or PackageManager.GET_META_DATA)
           dbList.add(
             SnapshotItem(
               id = null,
               packageName = info.packageName,
               timeStamp = ts,
-              label = info.getAppName() ?: "null",
-              versionName = info.versionName ?: "null",
+              label = info.getAppName().toString(),
+              versionName = info.versionName.toString(),
               versionCode = info.getVersionCode(),
               installedTime = info.firstInstallTime,
               lastUpdatedTime = info.lastUpdateTime,
@@ -234,16 +252,16 @@ class ShootService : LifecycleService() {
               abi = PackageUtils.getAbi(info).toShort(),
               targetApi = ai.targetSdkVersion.toShort(),
               nativeLibs = PackageUtils.getNativeDirLibs(info).toJson().orEmpty(),
-              services = PackageUtils.getComponentStringList(info.packageName, SERVICE, false)
+              services = PackageUtils.getComponentStringList(srpPi, SERVICE, false)
                 .toJson().orEmpty(),
-              activities = PackageUtils.getComponentStringList(info.packageName, ACTIVITY, false)
+              activities = PackageUtils.getComponentStringList(activitiesPi, ACTIVITY, false)
                 .toJson().orEmpty(),
-              receivers = PackageUtils.getComponentStringList(info.packageName, RECEIVER, false)
+              receivers = PackageUtils.getComponentStringList(srpPi, RECEIVER, false)
                 .toJson().orEmpty(),
-              providers = PackageUtils.getComponentStringList(info.packageName, PROVIDER, false)
+              providers = PackageUtils.getComponentStringList(srpPi, PROVIDER, false)
                 .toJson().orEmpty(),
-              permissions = info.getPermissionsList().toJson().orEmpty(),
-              metadata = PackageUtils.getMetaDataItems(info).toJson().orEmpty(),
+              permissions = miscPi.getPermissionsList().toJson().orEmpty(),
+              metadata = PackageUtils.getMetaDataItems(miscPi).toJson().orEmpty(),
               packageSize = info.getPackageSize(true),
               compileSdk = info.getCompileSdkVersion().toShort(),
               minSdk = ai.minSdkVersion.toShort()
@@ -259,7 +277,6 @@ class ShootService : LifecycleService() {
         }
       } catch (e: Exception) {
         Timber.e(e)
-        exceptionInfoList.add(info)
         continue
       }
 
@@ -273,52 +290,6 @@ class ShootService : LifecycleService() {
       }
     }
 
-    var info: ApplicationInfo
-    var abiValue: Int
-    while (exceptionInfoList.isNotEmpty()) {
-      try {
-        info = exceptionInfoList[0].applicationInfo
-        abiValue = PackageUtils.getAbi(exceptionInfoList[0])
-        PackageUtils.getPackageInfo(info.packageName, PackageManager.GET_PERMISSIONS).let {
-          dbList.add(
-            SnapshotItem(
-              id = null,
-              packageName = it.packageName,
-              timeStamp = ts,
-              label = it.getAppName() ?: "null",
-              versionName = it.versionName ?: "null",
-              versionCode = it.getVersionCode(),
-              installedTime = it.firstInstallTime,
-              lastUpdatedTime = it.lastUpdateTime,
-              isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) == ApplicationInfo.FLAG_SYSTEM,
-              abi = abiValue.toShort(),
-              targetApi = info.targetSdkVersion.toShort(),
-              nativeLibs = PackageUtils.getNativeDirLibs(it).toJson().orEmpty(),
-              services = PackageUtils.getComponentStringList(it.packageName, SERVICE, false)
-                .toJson().orEmpty(),
-              activities = PackageUtils.getComponentStringList(it.packageName, ACTIVITY, false)
-                .toJson().orEmpty(),
-              receivers = PackageUtils.getComponentStringList(it.packageName, RECEIVER, false)
-                .toJson().orEmpty(),
-              providers = PackageUtils.getComponentStringList(it.packageName, PROVIDER, false)
-                .toJson().orEmpty(),
-              permissions = it.getPermissionsList().toJson().orEmpty(),
-              metadata = PackageUtils.getMetaDataItems(it).toJson().orEmpty(),
-              packageSize = it.getPackageSize(true),
-              compileSdk = it.getCompileSdkVersion().toShort(),
-              minSdk = info.minSdkVersion.toShort()
-            )
-          )
-        }
-        exceptionInfoList.removeAt(0)
-      } catch (e: Exception) {
-        exceptionInfoList.removeAt(0)
-        continue
-      }
-      count++
-      notifyProgress(count * 100 / size)
-    }
-
     if (areNotificationsEnabled) {
       builder.setProgress(size, count, false)
       notificationManager.notify(notificationIdShoot, builder.build())
@@ -329,6 +300,13 @@ class ShootService : LifecycleService() {
     if (dropPrevious) {
       Timber.i("deleteSnapshotsAndTimeStamp: ${GlobalValues.snapshotTimestamp}")
       repository.deleteSnapshotsAndTimeStamp(GlobalValues.snapshotTimestamp)
+    }
+
+    if (GlobalValues.snapshotAutoRemoveThreshold > 0) {
+      repository.retainLatestSnapshotsAndRemoveOld(
+        count = GlobalValues.snapshotAutoRemoveThreshold,
+        forceShowLoading = false
+      )
     }
 
     if (areNotificationsEnabled) {
@@ -351,12 +329,11 @@ class ShootService : LifecycleService() {
     GlobalValues.snapshotTimestamp = ts
     _isShooting = false
     notifyFinished(ts)
-    ServiceCompat.stopForeground(this@ShootService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-    stopSelf()
     Timber.i("computeSnapshots end")
     isComputing = false
 
     if (stopWhenFinish) {
+      ServiceCompat.stopForeground(this@ShootService, ServiceCompat.STOP_FOREGROUND_REMOVE)
       stopSelf()
     }
   }
@@ -404,7 +381,7 @@ class ShootService : LifecycleService() {
     }
 
     override fun isShooting(): Boolean {
-      return serviceRef.get()?._isShooting ?: false
+      return serviceRef.get()?._isShooting == true
     }
 
     override fun registerOnShootOverListener(listener: OnShootListener?) {

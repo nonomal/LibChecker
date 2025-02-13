@@ -5,6 +5,7 @@ import com.absinthe.libchecker.api.ApiManager
 import com.absinthe.libchecker.api.bean.AndroidDistribution
 import com.absinthe.libchecker.api.request.AndroidDistributionRequest
 import com.absinthe.libchecker.constant.GlobalValues
+import com.absinthe.libchecker.database.entity.LCItem
 import com.absinthe.libchecker.features.chart.BaseVariableChartDataSource
 import com.absinthe.libchecker.features.chart.OsVersionAxisFormatter
 import com.absinthe.libchecker.features.chart.PercentageFormatter
@@ -23,7 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-class MarketDistributionChartDataSource : BaseVariableChartDataSource<BarChart>() {
+class MarketDistributionChartDataSource(items: List<LCItem>) : BaseVariableChartDataSource<BarChart>(items) {
   var distribution: List<AndroidDistribution>? = null
     private set
 
@@ -91,29 +92,28 @@ class MarketDistributionChartDataSource : BaseVariableChartDataSource<BarChart>(
     return distribution?.get(x)?.apiLevel
   }
 
-  private suspend fun getDistribution(context: Context): List<AndroidDistribution>? =
-    withContext(Dispatchers.IO) {
-      runCatching {
-        val localFile = File(File(context.filesDir, "rules"), "android_distribution.json")
-        if (!localFile.exists() || !DateUtils.isTimestampThisMonth(GlobalValues.distributionUpdateTimestamp)) {
-          val request: AndroidDistributionRequest = ApiManager.create()
-          val response = request.requestDistribution()
-          localFile.parentFile?.mkdirs()
-          if (localFile.exists().not()) {
-            localFile.createNewFile()
-          }
-          localFile.writeText(response.toJson().orEmpty())
-          GlobalValues.distributionUpdateTimestamp = System.currentTimeMillis()
-          return@withContext response
+  private suspend fun getDistribution(context: Context): List<AndroidDistribution>? = withContext(Dispatchers.IO) {
+    runCatching {
+      val localFile = File(File(context.filesDir, "rules"), "android_distribution.json")
+      if (!localFile.exists() || !DateUtils.isTimestampThisMonth(GlobalValues.distributionUpdateTimestamp)) {
+        val request: AndroidDistributionRequest = ApiManager.create()
+        val response = request.requestDistribution()
+        localFile.parentFile?.mkdirs()
+        if (localFile.exists().not()) {
+          localFile.createNewFile()
         }
+        localFile.writeText(response.toJson().orEmpty())
+        GlobalValues.distributionUpdateTimestamp = System.currentTimeMillis()
+        return@withContext response
+      }
 
-        val json = localFile.readText()
-        return@withContext json.fromJson<List<AndroidDistribution>>(
-          List::class.java,
-          AndroidDistribution::class.java
-        )
-      }.onFailure {
-        Timber.e(it)
-      }.getOrNull()
-    }
+      val json = localFile.readText()
+      return@withContext json.fromJson<List<AndroidDistribution>>(
+        List::class.java,
+        AndroidDistribution::class.java
+      )
+    }.onFailure {
+      Timber.e(it)
+    }.getOrNull()
+  }
 }

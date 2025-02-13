@@ -1,16 +1,20 @@
 package com.absinthe.libchecker.features.applist.detail.ui.impl
 
+import androidx.lifecycle.lifecycleScope
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.DEX
 import com.absinthe.libchecker.compat.VersionCompat
 import com.absinthe.libchecker.databinding.FragmentLibComponentBinding
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.detail.ui.EXTRA_PACKAGE_NAME
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibStringDiffUtil
 import com.absinthe.libchecker.features.applist.detail.ui.base.BaseDetailFragment
 import com.absinthe.libchecker.features.applist.detail.ui.base.EXTRA_TYPE
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.utils.extensions.putArguments
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import rikka.core.util.ClipboardUtils
 
 class DexAnalysisFragment : BaseDetailFragment<FragmentLibComponentBinding>() {
@@ -18,31 +22,30 @@ class DexAnalysisFragment : BaseDetailFragment<FragmentLibComponentBinding>() {
   override fun getRecyclerView() = binding.list
   override val needShowLibDetailDialog = false
 
+  override suspend fun getItems(): List<LibStringItemChip> {
+    val flow = viewModel.dexLibItems
+    return flow.value ?: flow.filterNotNull().first()
+  }
+
+  override fun onItemsAvailable(items: List<LibStringItemChip>) {
+    if (items.isEmpty()) {
+      emptyView.text.text = getString(R.string.uncharted_territory)
+    } else {
+      lifecycleScope.launch(Dispatchers.IO) {
+        setItemsWithFilter(viewModel.queriedText, null)
+      }
+    }
+
+    if (!isListReady) {
+      viewModel.updateItemsCountStateFlow(type, items.size)
+      isListReady = true
+    }
+  }
+
   override fun init() {
     binding.apply {
       list.apply {
         adapter = this@DexAnalysisFragment.adapter
-      }
-    }
-
-    viewModel.dexLibItems.observe(viewLifecycleOwner) {
-      if (it.isEmpty()) {
-        emptyView.text.text = getString(R.string.uncharted_territory)
-      } else {
-        if (viewModel.queriedText?.isNotEmpty() == true) {
-          filterList(viewModel.queriedText!!)
-        } else {
-          context?.let {
-            binding.list.addItemDecoration(dividerItemDecoration)
-          }
-          adapter.setDiffNewData(it.toMutableList(), afterListReadyTask)
-        }
-      }
-
-      if (!isListReady) {
-        viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-        viewModel.itemsCountList[type] = it.size
-        isListReady = true
       }
     }
 
@@ -56,11 +59,12 @@ class DexAnalysisFragment : BaseDetailFragment<FragmentLibComponentBinding>() {
       setDiffCallback(LibStringDiffUtil())
       setEmptyView(emptyView)
     }
-    viewModel.initDexData(packageName)
-  }
 
-  override fun getFilterListByText(text: String): List<LibStringItemChip>? {
-    return viewModel.dexLibItems.value?.filter { it.item.name.contains(text, true) }
+    viewModel.apply {
+      packageInfoStateFlow.value?.run {
+        dexLibItems.value ?: run { initDexData() }
+      }
+    }
   }
 
   override fun onDetach() {

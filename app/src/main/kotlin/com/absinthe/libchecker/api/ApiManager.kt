@@ -11,7 +11,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 private const val BRANCH_MASTER = "master"
-private const val WORKING_BRANCH = BRANCH_MASTER
+private const val WORKING_BRANCH = "v4"
 
 object ApiManager {
 
@@ -21,11 +21,13 @@ object ApiManager {
     "https://gitlab.com/zhaobozhen/LibChecker-Rules/-/raw/$WORKING_BRANCH/"
 
   const val GITHUB_NEW_ISSUE_URL =
-    "https://github.com/LibChecker/LibChecker-Rules/issues/new?labels=&template=library-name.md&title=%5BNew+Rule%5D"
+    "https://github.com/LibChecker/LibChecker-Rules/issues/new?labels=&template=submit_new_rule.yml"
 
   const val GITHUB_API_REPO_INFO = "https://api.github.com/repos/%s/%s"
 
   const val ANDROID_VERSION_DISTRIBUTION_URL = "https://dl.google.com/android/studio/metadata/distributions.json"
+
+  const val ASSETS_REPO_BASE_URL = "https://raw.githubusercontent.com/LibChecker/assets/main/"
 
   val root
     get() = when (GlobalValues.repo) {

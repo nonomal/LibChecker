@@ -1,7 +1,6 @@
 package com.absinthe.libchecker.features.home.ui
 
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
@@ -40,6 +39,7 @@ import com.absinthe.libchecker.ui.base.IAppBarContainer
 import com.absinthe.libchecker.utils.LCAppUtils
 import com.absinthe.libchecker.utils.extensions.addBackStateHandler
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
+import com.absinthe.libchecker.utils.extensions.isKeyboardShowing
 import com.absinthe.libchecker.utils.extensions.setCurrentItem
 import com.absinthe.rulesbundle.LCRules
 import com.google.android.material.behavior.HideBottomViewOnScrollBehavior
@@ -58,7 +58,10 @@ import timber.log.Timber
 
 const val PAGE_TRANSFORM_DURATION = 300L
 
-class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAppBarContainer {
+class MainActivity :
+  BaseActivity<ActivityMainBinding>(),
+  INavViewContainer,
+  IAppBarContainer {
 
   private val appViewModel: HomeViewModel by viewModels()
   private val navViewBehavior by lazy { HideBottomViewOnScrollBehavior<BottomNavigationView>() }
@@ -107,7 +110,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAp
         setPackage(packageName)
       },
       workerServiceConnection,
-      Context.BIND_AUTO_CREATE
+      BIND_AUTO_CREATE
     )
     appViewModel.clearApkCache()
     handleIntent(intent)
@@ -191,6 +194,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAp
   private fun initView() {
     val navView = binding.navView as NavigationBarView
     setSupportActionBar(binding.toolbar)
+    binding.toolbar.isBackInvokedCallbackEnabled = false
     supportActionBar?.title = LCAppUtils.setTitle(this)
 
     binding.apply {
@@ -241,7 +245,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAp
               }
             } else {
               val clickFlag =
-                binding.viewpager.getTag(R.id.viewpager_tab_click) as? Boolean ?: false
+                binding.viewpager.getTag(R.id.viewpager_tab_click) as? Boolean == true
               if (!clickFlag) {
                 binding.viewpager.setTag(R.id.viewpager_tab_click, true)
 
@@ -272,7 +276,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAp
 
     onBackPressedDispatcher.addBackStateHandler(
       lifecycleOwner = this,
-      enabledState = { binding.toolbar.hasExpandedActionView() },
+      enabledState = { !isKeyboardShowing() && binding.toolbar.hasExpandedActionView() },
       handler = { binding.toolbar.collapseActionView() }
     )
   }
@@ -285,8 +289,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), INavViewContainer, IAp
     ViewCompat.setOnApplyWindowInsetsListener(view) { _, windowInsets ->
       // 这里不直接使用 windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars())
       // 因为它的结果可能受到 insets 传播链上层某环节的影响，出现了错误的 navigationBarsInsets
+      // 使用 WindowInsetsCompat.Type.systemBars() 以适配如 HyperOS Freeform 之类的奇怪的东西
       val navigationBarsInsets =
-        ViewCompat.getRootWindowInsets(view)!!.getInsets(WindowInsetsCompat.Type.navigationBars())
+        ViewCompat.getRootWindowInsets(view)!!.getInsets(WindowInsetsCompat.Type.systemBars())
       view.updatePadding(bottom = navigationBarsInsets.bottom)
       windowInsets
     }

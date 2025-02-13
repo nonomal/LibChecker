@@ -6,6 +6,7 @@ import com.absinthe.libchecker.R
 import com.absinthe.libchecker.database.entity.Features
 import com.absinthe.libchecker.database.entity.LCItem
 import com.absinthe.libchecker.features.chart.BaseChartDataSource
+import com.absinthe.libchecker.features.chart.ChartSourceItem
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.data.PieData
@@ -16,8 +17,8 @@ import com.github.mikephil.charting.utils.MPPointF
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class JetpackComposeChartDataSource : BaseChartDataSource<PieChart>() {
-  override val classifiedList: List<MutableList<LCItem>> = listOf(mutableListOf(), mutableListOf())
+class JetpackComposeChartDataSource(items: List<LCItem>) : BaseChartDataSource<PieChart>(items) {
+  override val classifiedMap: HashMap<Int, ChartSourceItem> = HashMap(2)
 
   override suspend fun fillChartView(chartView: PieChart) {
     withContext(Dispatchers.Default) {
@@ -28,54 +29,64 @@ class JetpackComposeChartDataSource : BaseChartDataSource<PieChart>() {
       )
       val entries: ArrayList<PieEntry> = ArrayList()
       val colorOnSurface = context.getColorByAttr(com.google.android.material.R.attr.colorOnSurface)
+      val classifiedList = listOf(mutableListOf<LCItem>(), mutableListOf())
 
-      filteredList?.let {
-        for (item in it) {
-          if ((item.features and Features.JETPACK_COMPOSE) > 0) {
-            classifiedList[0].add(item)
-          } else {
-            classifiedList[1].add(item)
-          }
+      for (item in filteredList) {
+        if ((item.features and Features.JETPACK_COMPOSE) > 0) {
+          classifiedList[COMPOSE_USED].add(item)
+        } else {
+          classifiedList[COMPOSE_UNUSED].add(item)
         }
+      }
 
-        // NOTE: The order of the entries when being added to the entries array determines their position around the center of
-        // the chart.
-        val legendList = mutableListOf<String>()
-        for (i in parties.indices) {
-          entries.add(PieEntry(classifiedList[i].size.toFloat(), parties[i % parties.size]))
-          legendList.add(parties[i % parties.size])
-        }
-        val dataSet = PieDataSet(entries, "").apply {
-          setDrawIcons(false)
-          sliceSpace = 3f
-          iconsOffset = MPPointF(0f, 40f)
-          selectionShift = 5f
-          xValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
-          yValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
-          valueLineColor = context.getColorByAttr(com.google.android.material.R.attr.colorOnSurface)
-        }
+      classifiedMap[COMPOSE_USED] = ChartSourceItem(
+        com.absinthe.lc.rulesbundle.R.drawable.ic_lib_jetpack_compose,
+        false,
+        classifiedList[COMPOSE_USED]
+      )
+      classifiedMap[COMPOSE_UNUSED] = ChartSourceItem(
+        com.absinthe.lc.rulesbundle.R.drawable.ic_lib_jetpack_compose,
+        true,
+        classifiedList[COMPOSE_UNUSED]
+      )
 
-        // add a lot of colors
-        val colors = arrayListOf(
-          Color.parseColor("#37bf6e"),
-          Color.parseColor("#073042")
-        )
+      // NOTE: The order of the entries when being added to the entries array determines their position around the center of
+      // the chart.
+      val legendList = mutableListOf<String>()
+      for (i in parties.indices) {
+        entries.add(PieEntry(classifiedList[i].size.toFloat(), parties[i % parties.size]))
+        legendList.add(parties[i % parties.size])
+      }
+      val dataSet = PieDataSet(entries, "").apply {
+        setDrawIcons(false)
+        sliceSpace = 3f
+        iconsOffset = MPPointF(0f, 40f)
+        selectionShift = 5f
+        xValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
+        yValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
+        valueLineColor = context.getColorByAttr(com.google.android.material.R.attr.colorOnSurface)
+      }
 
-        dataSet.colors = colors
-        // dataSet.setSelectionShift(0f);
-        val data = PieData(dataSet).apply {
-          setValueFormatter(PercentFormatter())
-          setValueTextSize(10f)
-          setValueTextColor(colorOnSurface)
-        }
+      // add a lot of colors
+      val colors = arrayListOf(
+        Color.parseColor("#37bf6e"),
+        Color.parseColor("#073042")
+      )
 
-        withContext(Dispatchers.Main) {
-          chartView.apply {
-            this.data = data
-            setEntryLabelColor(colorOnSurface)
-            highlightValues(null)
-            invalidate()
-          }
+      dataSet.colors = colors
+      // dataSet.setSelectionShift(0f);
+      val data = PieData(dataSet).apply {
+        setValueFormatter(PercentFormatter())
+        setValueTextSize(10f)
+        setValueTextColor(colorOnSurface)
+      }
+
+      withContext(Dispatchers.Main) {
+        chartView.apply {
+          this.data = data
+          setEntryLabelColor(colorOnSurface)
+          highlightValues(null)
+          invalidate()
         }
       }
     }
@@ -83,9 +94,14 @@ class JetpackComposeChartDataSource : BaseChartDataSource<PieChart>() {
 
   override fun getLabelByXValue(context: Context, x: Int): String {
     return when (x) {
-      0 -> context.getString(R.string.string_compose_used)
-      1 -> context.getString(R.string.string_compose_unused)
+      COMPOSE_USED -> context.getString(R.string.string_compose_used)
+      COMPOSE_UNUSED -> context.getString(R.string.string_compose_unused)
       else -> ""
     }
+  }
+
+  companion object {
+    const val COMPOSE_USED = 0
+    const val COMPOSE_UNUSED = 1
   }
 }

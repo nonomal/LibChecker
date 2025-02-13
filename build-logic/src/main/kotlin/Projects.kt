@@ -3,10 +3,9 @@ import com.android.build.gradle.LibraryExtension
 import com.android.build.gradle.internal.dsl.BaseAppModuleExtension
 import java.io.File
 import java.time.Instant
-import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 
-const val baseVersionName = "2.5.0"
+const val baseVersionName = "2.5.1"
 val Project.verName: String get() = "${baseVersionName}${versionNameSuffix}.${exec("git rev-parse --short HEAD")}"
 val Project.verCode: Int get() = exec("git rev-list --count HEAD").toInt()
 val Project.isDevVersion: Boolean get() = exec("git tag -l $baseVersionName").isEmpty()
@@ -33,6 +32,7 @@ fun Project.setupAppModule(block: BaseAppModuleExtension.() -> Unit = {}) {
         "in-rID",
         "pt-rBR",
         "ar-rSA",
+        "tr-rTR",
       )
     }
     val releaseSigning = if (project.hasProperty("releaseStoreFile")) {
@@ -65,7 +65,7 @@ fun Project.setupAppModule(block: BaseAppModuleExtension.() -> Unit = {}) {
           "APP_CENTER_SECRET",
           "\"" + System.getenv("APP_CENTER_SECRET").orEmpty() + "\""
         )
-        buildConfigField("String", "BUILD_TIME", "\"" + Instant.now().toString() + "\"")
+        //buildConfigField("String", "BUILD_TIME", "\"" + Instant.now().toString() + "\"")
       }
     }
 
@@ -75,10 +75,10 @@ fun Project.setupAppModule(block: BaseAppModuleExtension.() -> Unit = {}) {
 
 private inline fun <reified T : BaseExtension> Project.setupBaseModule(crossinline block: T.() -> Unit = {}) {
   extensions.configure<BaseExtension>("android") {
-    compileSdkVersion(34)
+    compileSdkVersion(35)
     defaultConfig {
       minSdk = 24
-      targetSdk = 34
+      targetSdk = 35
     }
     sourceSets.configureEach {
       java.srcDirs("src/$name/kotlin")

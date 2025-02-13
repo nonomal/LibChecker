@@ -47,6 +47,7 @@ import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.UiUtils
 import com.absinthe.libchecker.utils.extensions.getColor
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
+import com.absinthe.libchecker.utils.extensions.getResourceIdByAttr
 import com.absinthe.libchecker.utils.extensions.tintTextToPrimary
 import com.absinthe.libchecker.utils.manifest.ResourceParser
 import com.chad.library.adapter.base.viewholder.BaseViewHolder
@@ -58,8 +59,7 @@ class LibStringAdapter(
   val packageName: String,
   @LibType val type: Int,
   private val fragmentManager: FragmentManager? = null
-) :
-  HighlightAdapter<LibStringItemChip>() {
+) : HighlightAdapter<LibStringItemChip>() {
 
   var highlightPosition: Int = -1
     private set
@@ -76,9 +76,7 @@ class LibStringAdapter(
   private var is64Bit: Boolean = false
 
   fun switchProcessMode() {
-    processMode = !processMode
-    //noinspection NotifyDataSetChanged
-    notifyDataSetChanged()
+    setProcessMode(!processMode)
   }
 
   fun setProcessMode(isProcessMode: Boolean) {
@@ -119,6 +117,7 @@ class LibStringAdapter(
           item.item.name
         }
       }
+
       EXPORTED -> {
         if ((GlobalValues.itemAdvancedOptions and AdvancedOptions.MARK_EXPORTED) > 0) {
           buildSpannedString {
@@ -134,6 +133,7 @@ class LibStringAdapter(
           item.item.name
         }
       }
+
       else -> {
         item.item.name
       }
@@ -141,9 +141,13 @@ class LibStringAdapter(
 
     when (type) {
       NATIVE -> setNativeContent(holder.itemView as NativeLibItemView, item, itemName)
+
       PERMISSION -> setPermissionContent(holder.itemView as ComponentLibItemView, item, itemName)
+
       METADATA -> setMetadataContent(holder.itemView as MetadataLibItemView, item, itemName)
+
       STATIC -> setStaticContent(holder.itemView as StaticLibItemView, item, itemName)
+
       else -> {
         (holder.itemView as ComponentLibItemView).apply {
           processLabelColor = if (item.item.process.isNullOrEmpty() || !processMode) {
@@ -153,7 +157,7 @@ class LibStringAdapter(
           }
           setOrHighlightText(libName, itemName)
           if ((GlobalValues.itemAdvancedOptions and AdvancedOptions.SHOW_MARKED_LIB) > 0) {
-            setChip(item.chip)
+            setChip(item.rule)
           } else {
             setChip(null)
           }
@@ -167,7 +171,7 @@ class LibStringAdapter(
           HIGHLIGHT_TRANSITION_DURATION
         )
       }
-      holder.itemView.background = null
+      holder.itemView.setBackgroundResource(context.getResourceIdByAttr(android.R.attr.selectableItemBackground))
     } else {
       val drawable = TransitionDrawable(
         listOf(
@@ -204,7 +208,7 @@ class LibStringAdapter(
     setOrHighlightText(itemView.libName, itemName)
     itemView.libSize.text = PackageUtils.sizeToString(context, item.item, showElfInfo = true, is64Bit = is64Bit)
     if ((GlobalValues.itemAdvancedOptions and AdvancedOptions.SHOW_MARKED_LIB) > 0) {
-      itemView.setChip(item.chip)
+      itemView.setChip(item.rule)
     } else {
       itemView.setChip(null)
     }
@@ -240,7 +244,7 @@ class LibStringAdapter(
       it.text = sb
     }
     if ((GlobalValues.itemAdvancedOptions and AdvancedOptions.SHOW_MARKED_LIB) > 0) {
-      itemView.setChip(item.chip)
+      itemView.setChip(item.rule)
     } else {
       itemView.setChip(null)
     }
@@ -276,7 +280,7 @@ class LibStringAdapter(
 
     if (itemView.linkToIcon.isVisible) {
       itemView.linkToIcon.setOnClickListener {
-        val transformed = itemView.linkToIcon.getTag(R.id.resource_transformed_id) as? Boolean ?: false
+        val transformed = itemView.linkToIcon.getTag(R.id.resource_transformed_id) as? Boolean == true
         if (transformed) {
           itemView.libSize.text = item.item.source
           itemView.linkToIcon.setImageResource(R.drawable.ic_outline_change_circle_24)
@@ -294,6 +298,7 @@ class LibStringAdapter(
                   }
                   clickedTag = true
                 }
+
                 "array" -> {
                   appResources?.let { res ->
                     itemView.libSize.text =
@@ -301,11 +306,13 @@ class LibStringAdapter(
                   }
                   clickedTag = true
                 }
+
                 "bool" -> {
                   appResources?.let { res ->
                     itemView.libSize.text = res.getBoolean(item.item.size.toInt()).toString()
                   }
                 }
+
                 "xml" -> {
                   fragmentManager?.let { fm ->
                     appResources?.let { res ->
@@ -322,6 +329,7 @@ class LibStringAdapter(
                   }
                   clickedTag = false
                 }
+
                 "drawable", "mipmap" -> {
                   appResources?.getDrawable(item.item.size.toInt(), null)?.let { drawable ->
                     val bitmap = drawable.toBitmap(
@@ -333,6 +341,7 @@ class LibStringAdapter(
                   }
                   clickedTag = true
                 }
+
                 "color" -> {
                   appResources?.getColor(item.item.size.toInt(), null)?.let { colorInt ->
                     itemView.linkToIcon.load(
@@ -347,12 +356,14 @@ class LibStringAdapter(
                   }
                   clickedTag = true
                 }
+
                 "dimen" -> {
                   appResources?.let { res ->
                     itemView.libSize.text = res.getDimension(item.item.size.toInt()).toString()
                   }
                   clickedTag = true
                 }
+
                 else -> {
                   clickedTag = false
                 }

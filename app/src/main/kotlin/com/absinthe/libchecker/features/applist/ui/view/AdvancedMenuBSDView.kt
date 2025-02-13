@@ -2,7 +2,6 @@ package com.absinthe.libchecker.features.applist.ui.view
 
 import android.content.Context
 import android.os.Build
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -15,7 +14,6 @@ import com.absinthe.libchecker.features.applist.ui.adapter.AppAdapter
 import com.absinthe.libchecker.features.home.ui.adapter.AdvancedMenuAdapter
 import com.absinthe.libchecker.features.statistics.bean.DISABLED
 import com.absinthe.libchecker.features.statistics.bean.EXPORTED
-import com.absinthe.libchecker.features.statistics.bean.LibChip
 import com.absinthe.libchecker.features.statistics.bean.LibStringItem
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.ui.app.BottomSheetRecyclerView
@@ -24,17 +22,20 @@ import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.absinthe.libchecker.utils.extensions.getColorStateListByAttr
 import com.absinthe.libchecker.view.app.IHeaderView
 import com.absinthe.libraries.utils.view.BottomSheetHeaderView
+import com.absinthe.rulesbundle.Rule
 import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 import com.google.android.material.card.MaterialCardView
 
-class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView {
+class AdvancedMenuBSDView(context: Context) :
+  LinearLayout(context),
+  IHeaderView {
 
   private val header = BottomSheetHeaderView(context).apply {
     layoutParams =
-      LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+      LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
     title.text = context.getString(R.string.advanced_menu)
   }
 
@@ -44,12 +45,12 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val demoView = RecyclerView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 24.dp
     }
-    overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+    overScrollMode = OVER_SCROLL_NEVER
     layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
     adapter = demoAdapter
 
@@ -72,8 +73,8 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val sortView = AdvancedMenuSortView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 24.dp
     }
@@ -81,8 +82,8 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val flexLayout = FlexboxLayout(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 8.dp
     }
@@ -93,18 +94,18 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val itemView = MaterialCardView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 24.dp
     }
-    overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+    overScrollMode = OVER_SCROLL_NEVER
     strokeColor = context.getColorByAttr(com.google.android.material.R.attr.colorOutline)
     setCardBackgroundColor(context.getColorStateListByAttr(com.google.android.material.R.attr.colorSecondaryContainer))
 
     val componentStyleDemoView = RecyclerView(context).apply {
       setPadding(0, 8.dp, 0, 8.dp)
-      overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+      overScrollMode = OVER_SCROLL_NEVER
       layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
       adapter = itemAdapter
 
@@ -115,9 +116,12 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
               name = Constants.EXAMPLE_EXPORTED,
               source = EXPORTED
             ),
-            LibChip(
+            Rule(
+              Constants.EXAMPLE_RULE,
               R.drawable.ic_logo,
-              Constants.EXAMPLE_RULE
+              null,
+              null,
+              true
             )
           )
         )
@@ -126,9 +130,12 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
             LibStringItem(
               name = Constants.EXAMPLE_NORMAL
             ),
-            LibChip(
+            Rule(
+              Constants.EXAMPLE_RULE,
               R.drawable.ic_logo,
-              Constants.EXAMPLE_RULE
+              null,
+              null,
+              true
             )
           )
         )
@@ -138,9 +145,12 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
               name = Constants.EXAMPLE_DISABLED,
               source = DISABLED
             ),
-            LibChip(
+            Rule(
+              Constants.EXAMPLE_RULE,
               R.drawable.ic_logo,
-              Constants.EXAMPLE_RULE
+              null,
+              null,
+              true
             )
           )
         )
@@ -152,8 +162,8 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val itemFlexLayout = FlexboxLayout(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     ).also {
       it.topMargin = 8.dp
     }
@@ -164,10 +174,10 @@ class AdvancedMenuBSDView(context: Context) : LinearLayout(context), IHeaderView
 
   private val list = BottomSheetRecyclerView(context).apply {
     layoutParams = LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
+      LayoutParams.MATCH_PARENT,
+      LayoutParams.WRAP_CONTENT
     )
-    overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+    overScrollMode = OVER_SCROLL_NEVER
     adapter = this@AdvancedMenuBSDView.adapter
     layoutManager = LinearLayoutManager(context)
     isVerticalScrollBarEnabled = false

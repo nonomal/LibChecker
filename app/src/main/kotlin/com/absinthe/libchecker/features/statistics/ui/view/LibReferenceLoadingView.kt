@@ -16,16 +16,19 @@ import com.absinthe.libchecker.view.AViewGroup
 import com.airbnb.lottie.LottieAnimationView
 import com.airbnb.lottie.LottieDrawable
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import java.io.File
 
-class LibReferenceLoadingView(context: Context, attributeSet: AttributeSet? = null) :
-  AViewGroup(context, attributeSet) {
+class LibReferenceLoadingView(
+  context: Context,
+  attributeSet: AttributeSet? = null
+) : AViewGroup(context, attributeSet) {
 
   val loadingView = LottieAnimationView(context).apply {
     val size = context.getDimensionPixelSize(R.dimen.lottie_anim_size)
     layoutParams = FrameLayout.LayoutParams(size, size).also {
       it.gravity = Gravity.CENTER
     }
-    imageAssetsFolder = "/"
+    imageAssetsFolder = File.separator
     repeatCount = LottieDrawable.INFINITE
     val assetName = when (GlobalValues.season) {
       SPRING -> "anim/lib_reference_spring.json.zip"

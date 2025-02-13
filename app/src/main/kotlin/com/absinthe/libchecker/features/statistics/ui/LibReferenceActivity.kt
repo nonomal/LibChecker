@@ -21,6 +21,9 @@ import com.absinthe.libchecker.utils.extensions.isOrientationLandscape
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
 import com.absinthe.libchecker.utils.extensions.paddingTopCompat
 import com.absinthe.libraries.utils.utils.AntiShakeUtils
+import java.io.File
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import rikka.widget.borderview.BorderView
@@ -47,7 +50,11 @@ class LibReferenceActivity : BaseActivity<ActivityLibReferenceBinding>() {
       lifecycleScope.launch {
         viewModel.dbItemsFlow.collect {
           refList?.let {
-            viewModel.setData(it.toList())
+            val currentPackageSet = adapter.data.map { item -> item.packageName }.toSet()
+            val newPackageSet = it.toSet()
+            if (currentPackageSet != newPackageSet) {
+              viewModel.setData(it.toList())
+            }
           } ?: run {
             viewModel.setData(name, refType)
           }
@@ -110,7 +117,7 @@ class LibReferenceActivity : BaseActivity<ActivityLibReferenceBinding>() {
         (root as ViewGroup).bringChildToFront(appbar)
       }
       lottie.apply {
-        imageAssetsFolder = "/"
+        imageAssetsFolder = File.separator
 
         val assetName = when (GlobalValues.season) {
           SPRING -> "anim/lib_reference_spring.json.zip"
@@ -124,10 +131,12 @@ class LibReferenceActivity : BaseActivity<ActivityLibReferenceBinding>() {
       }
     }
 
-    viewModel.libRefList.observe(this) {
+    viewModel.libRefListFlow.onEach {
       adapter.setList(it)
-      binding.vfContainer.displayedChild = 1
-    }
+      if (binding.vfContainer.displayedChild != 1) {
+        binding.vfContainer.displayedChild = 1
+      }
+    }.launchIn(lifecycleScope)
 
     adapter.setOnItemClickListener { _, view, position ->
       if (AntiShakeUtils.isInvalidClick(view)) {

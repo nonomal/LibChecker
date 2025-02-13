@@ -1,9 +1,9 @@
 package com.absinthe.libchecker.features.applist.detail.ui.impl
 
+import androidx.lifecycle.lifecycleScope
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.METADATA
 import com.absinthe.libchecker.databinding.FragmentLibNativeBinding
-import com.absinthe.libchecker.features.applist.LocatedCount
 import com.absinthe.libchecker.features.applist.Referable
 import com.absinthe.libchecker.features.applist.detail.ui.EXTRA_PACKAGE_NAME
 import com.absinthe.libchecker.features.applist.detail.ui.adapter.LibStringDiffUtil
@@ -11,37 +11,42 @@ import com.absinthe.libchecker.features.applist.detail.ui.base.BaseDetailFragmen
 import com.absinthe.libchecker.features.applist.detail.ui.base.EXTRA_TYPE
 import com.absinthe.libchecker.features.statistics.bean.LibStringItemChip
 import com.absinthe.libchecker.utils.extensions.putArguments
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
-class MetaDataAnalysisFragment : BaseDetailFragment<FragmentLibNativeBinding>(), Referable {
+class MetaDataAnalysisFragment :
+  BaseDetailFragment<FragmentLibNativeBinding>(),
+  Referable {
 
   override fun getRecyclerView() = binding.list
   override val needShowLibDetailDialog = false
+
+  override suspend fun getItems(): List<LibStringItemChip> {
+    val flow = viewModel.metaDataItems
+    return flow.value ?: flow.filterNotNull().first()
+  }
+
+  override fun onItemsAvailable(items: List<LibStringItemChip>) {
+    if (items.isEmpty()) {
+      emptyView.text.text = getString(R.string.empty_list)
+    } else {
+      lifecycleScope.launch(Dispatchers.IO) {
+        setItemsWithFilter(viewModel.queriedText, null)
+      }
+    }
+
+    if (!isListReady) {
+      viewModel.updateItemsCountStateFlow(type, items.size)
+      isListReady = true
+    }
+  }
 
   override fun init() {
     binding.apply {
       list.apply {
         adapter = this@MetaDataAnalysisFragment.adapter
-      }
-    }
-
-    viewModel.metaDataItems.observe(viewLifecycleOwner) {
-      if (it.isEmpty()) {
-        emptyView.text.text = getString(R.string.empty_list)
-      } else {
-        if (viewModel.queriedText?.isNotEmpty() == true) {
-          filterList(viewModel.queriedText!!)
-        } else {
-          context?.let {
-            binding.list.addItemDecoration(dividerItemDecoration)
-          }
-          adapter.setDiffNewData(it.toMutableList(), afterListReadyTask)
-        }
-      }
-
-      if (!isListReady) {
-        viewModel.itemsCountLiveData.value = LocatedCount(locate = type, count = it.size)
-        viewModel.itemsCountList[type] = it.size
-        isListReady = true
       }
     }
 
@@ -51,16 +56,10 @@ class MetaDataAnalysisFragment : BaseDetailFragment<FragmentLibNativeBinding>(),
       setEmptyView(emptyView)
     }
 
-    viewModel.packageInfoLiveData.observe(viewLifecycleOwner) {
-      if (it != null) {
-        viewModel.initMetaDataData()
+    viewModel.apply {
+      packageInfoStateFlow.value?.run {
+        metaDataItems.value ?: run { initMetaDataData() }
       }
-    }
-  }
-
-  override fun getFilterListByText(text: String): List<LibStringItemChip>? {
-    return viewModel.metaDataItems.value?.filter {
-      it.item.name.contains(text, true) || it.item.source?.contains(text, true) == true
     }
   }
 

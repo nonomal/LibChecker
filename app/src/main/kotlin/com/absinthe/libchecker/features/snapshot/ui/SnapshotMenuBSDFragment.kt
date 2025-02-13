@@ -14,16 +14,14 @@ class SnapshotMenuBSDFragment : BaseBottomSheetViewDialogFragment<SnapshotMenuBS
   private val previousAdvancedOptions = GlobalValues.snapshotOptions
   private val optionsViewMap = mutableMapOf<Int, SnapshotMenuItemView>()
 
-  private var onDismissCallback: () -> Unit = {}
+  private var onDismissCallback: (optionsDiff: Int) -> Unit = {}
 
   override fun initRootView(): SnapshotMenuBSDView = SnapshotMenuBSDView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
   override fun init() {
-    root.post {
-      maxPeekSize = ((dialog?.window?.decorView?.height ?: 0) * 0.8).toInt()
-    }
+    maxPeekHeightPercentage = 0.8f
     optionsViewMap[SnapshotOptions.SHOW_UPDATE_TIME] = root.addOptionItemView(R.string.snapshot_menu_show_update_time, SnapshotOptions.SHOW_UPDATE_TIME)
     optionsViewMap[SnapshotOptions.HIDE_NO_COMPONENT_CHANGES] = root.addOptionItemView(R.string.snapshot_menu_hide_no_component_changes, SnapshotOptions.HIDE_NO_COMPONENT_CHANGES)
     optionsViewMap[SnapshotOptions.DIFF_HIGHLIGHT] = root.addOptionItemView(R.string.snapshot_menu_diff_highlight, SnapshotOptions.DIFF_HIGHLIGHT)
@@ -39,9 +37,7 @@ class SnapshotMenuBSDFragment : BaseBottomSheetViewDialogFragment<SnapshotMenuBS
     }
 
     dialog?.setOnDismissListener {
-      if (GlobalValues.snapshotOptions != previousAdvancedOptions) {
-        onDismissCallback()
-      }
+      onDismissCallback(previousAdvancedOptions.xor(GlobalValues.snapshotOptions))
     }
   }
 
@@ -57,7 +53,7 @@ class SnapshotMenuBSDFragment : BaseBottomSheetViewDialogFragment<SnapshotMenuBS
     }
   }
 
-  fun setOnDismissListener(action: () -> Unit) {
+  fun setOnDismissListener(action: (optionsDiff: Int) -> Unit) {
     onDismissCallback = action
   }
 }

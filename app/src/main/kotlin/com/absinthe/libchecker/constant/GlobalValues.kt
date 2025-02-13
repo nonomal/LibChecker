@@ -2,17 +2,21 @@ package com.absinthe.libchecker.constant
 
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import androidx.lifecycle.MutableLiveData
 import com.absinthe.libchecker.BuildConfig
+import com.absinthe.libchecker.LibCheckerApp
+import com.absinthe.libchecker.app.SystemServices
 import com.absinthe.libchecker.constant.options.AdvancedOptions
 import com.absinthe.libchecker.constant.options.LibReferenceOptions
 import com.absinthe.libchecker.constant.options.SnapshotOptions
 import com.absinthe.libchecker.features.applist.MODE_SORT_BY_SIZE
 import com.absinthe.libchecker.utils.DateUtils
+import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.SPDelegates
 import com.absinthe.libchecker.utils.SPUtils
 import com.absinthe.libchecker.utils.extensions.unsafeLazy
 import java.util.Locale
+import kotlinx.coroutines.flow.MutableSharedFlow
+import timber.log.Timber
 
 const val SP_NAME = "${BuildConfig.APPLICATION_ID}_preferences"
 
@@ -22,17 +26,15 @@ object GlobalValues {
     return SPUtils.sp
   }
 
+  val preferencesFlow = MutableSharedFlow<Pair<String, Any>>()
+
   var advancedOptions: Int by SPDelegates(Constants.PREF_ADVANCED_OPTIONS, AdvancedOptions.DEFAULT_OPTIONS)
-  val advancedOptionsLiveData: MutableLiveData<Int> = MutableLiveData(advancedOptions)
 
   var itemAdvancedOptions: Int by SPDelegates(Constants.PREF_ITEM_ADVANCED_OPTIONS, AdvancedOptions.ITEM_DEFAULT_OPTIONS)
-  val itemAdvancedOptionsLiveData: MutableLiveData<Int> = MutableLiveData(itemAdvancedOptions)
 
   var libReferenceOptions: Int by SPDelegates(Constants.PREF_LIB_REF_OPTIONS, LibReferenceOptions.DEFAULT_OPTIONS)
-  val libReferenceOptionsLiveData: MutableLiveData<Int> = MutableLiveData(libReferenceOptions)
 
   var snapshotOptions: Int by SPDelegates(Constants.PREF_SNAPSHOT_OPTIONS, SnapshotOptions.DEFAULT_OPTIONS)
-  val snapshotOptionsLiveData: MutableLiveData<Int> = MutableLiveData(snapshotOptions)
 
   var repo: String by SPDelegates(Constants.PREF_RULES_REPO, Constants.REPO_GITLAB)
 
@@ -54,23 +56,31 @@ object GlobalValues {
 
   var libReferenceThreshold: Int by SPDelegates(Constants.PREF_LIB_REF_THRESHOLD, 2)
 
-  val isShowSystemApps: MutableLiveData<Boolean> =
-    MutableLiveData((advancedOptions and AdvancedOptions.SHOW_SYSTEM_APPS) > 0)
+  val isShowSystemApps: Boolean
+    get() = (advancedOptions and AdvancedOptions.SHOW_SYSTEM_APPS) > 0
 
-  val isColorfulIcon: MutableLiveData<Boolean> =
-    MutableLiveData(getPreferences().getBoolean(Constants.PREF_COLORFUL_ICON, true))
+  var isColorfulIcon: Boolean by SPDelegates(Constants.PREF_COLORFUL_ICON, true)
 
-  val isAnonymousAnalyticsEnabled: MutableLiveData<Boolean> =
-    MutableLiveData(getPreferences().getBoolean(Constants.PREF_ANONYMOUS_ANALYTICS, true))
+  val isAnonymousAnalyticsEnabled: Boolean by SPDelegates(Constants.PREF_ANONYMOUS_ANALYTICS, true)
 
-  val libSortModeLiveData: MutableLiveData<Int> = MutableLiveData(libSortMode)
+  var isDetailedAbiChart: Boolean by SPDelegates(Constants.PREF_DETAILED_ABI_CHART, false)
 
-  val libReferenceThresholdLiveData: MutableLiveData<Int> = MutableLiveData(libReferenceThreshold)
+  var preferredRuleLanguage: String by SPDelegates(Constants.PREF_RULE_LANGUAGE, "zh-Hans")
 
   val season by unsafeLazy { DateUtils.getCurrentSeason() }
 
   var locale: Locale = Locale.getDefault()
     get() {
+      if (OsUtils.atLeastT()) {
+        val systemSelectedLocale = SystemServices.localeManager.getApplicationLocales(LibCheckerApp.app.packageName)
+        Timber.d("System selected locale: $systemSelectedLocale")
+        val locale = systemSelectedLocale.get(0) ?: Locale.getDefault()
+        if (locale != field) {
+          field = locale
+          getPreferences().edit { putString(Constants.PREF_LOCALE, locale.toLanguageTag()) }
+        }
+        return locale
+      }
       val tag = getPreferences().getString(Constants.PREF_LOCALE, null)
       if (tag.isNullOrEmpty() || "SYSTEM" == tag) {
         return Locale.getDefault()
@@ -84,7 +94,9 @@ object GlobalValues {
 
   var uuid: String by SPDelegates(Constants.PREF_UUID, String())
 
-  var isGitHubUnreachable = true
+  var isGitHubReachable = true
 
   var trackItemsChanged = false
+
+  var snapshotAutoRemoveThreshold: Int by SPDelegates(Constants.PREF_SNAPSHOT_AUTO_REMOVE_THRESHOLD, -1)
 }

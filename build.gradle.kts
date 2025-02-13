@@ -10,6 +10,7 @@ plugins {
   alias(libs.plugins.ksp) apply false
   alias(libs.plugins.moshiX) apply false
   alias(libs.plugins.spotless) apply false
+  alias(libs.plugins.aboutlibraries) apply false
   id("build-logic") apply false
 }
 
@@ -29,7 +30,7 @@ allprojects {
   // See https://kotlinlang.org/docs/gradle-configure-project.html#gradle-java-toolchains-support
   plugins.withType<JavaBasePlugin>().configureEach {
     extensions.configure<JavaPluginExtension> {
-      toolchain.languageVersion = JavaLanguageVersion.of(17)
+      toolchain.languageVersion = JavaLanguageVersion.of(21)
     }
   }
 }

@@ -108,6 +108,10 @@
 -keep,allowoptimization public class * extends androidx.viewbinding.ViewBinding {
   public static * inflate(android.view.LayoutInflater);
 }
+# This class's inflate method will be pruned by R8 when upgrading to AGP 8.5, we don't know why
+-keep public class com.absinthe.libchecker.databinding.ActivityAppDetailBinding {
+  public static * inflate(android.view.LayoutInflater);
+}
 
 # BottomSheetBehavior
 -keepclassmembers public class com.google.android.material.bottomsheet.BottomSheetBehavior {
@@ -126,11 +130,6 @@
 # ViewBinding
 -keep,allowobfuscation,allowshrinking class com.absinthe.libchecker.ui.base.BaseActivity
 -keep,allowobfuscation,allowshrinking class * extends com.absinthe.libchecker.ui.base.BaseActivity
-
-# TODO: Waiting for new retrofit release to remove these rules
--keep,allowobfuscation,allowshrinking interface retrofit2.Call
--keep,allowobfuscation,allowshrinking class retrofit2.Response
--keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
 
 # org.apache.commons:commons-compress
 -keep,allowoptimization class org.apache.commons.compress.archivers.zip.**

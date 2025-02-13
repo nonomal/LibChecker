@@ -35,11 +35,9 @@ import timber.log.Timber
 
 const val EXTRA_LC_ITEM = "EXTRA_LC_ITEM"
 
-class OverlayDetailBottomSheetDialogFragment :
-  BaseBottomSheetViewDialogFragment<OverlayDetailBottomSheetView>() {
+class OverlayDetailBottomSheetDialogFragment : BaseBottomSheetViewDialogFragment<OverlayDetailBottomSheetView>() {
 
-  override fun initRootView(): OverlayDetailBottomSheetView =
-    OverlayDetailBottomSheetView(requireContext())
+  override fun initRootView(): OverlayDetailBottomSheetView = OverlayDetailBottomSheetView(requireContext())
 
   override fun getHeaderView(): BottomSheetHeaderView = root.getHeaderView()
 
@@ -63,7 +61,9 @@ class OverlayDetailBottomSheetDialogFragment :
             false,
             requireContext()
           )
-          load(appIconLoader.loadIcon(packageInfo.applicationInfo))
+          packageInfo.applicationInfo?.let {
+            load(appIconLoader.loadIcon(it))
+          }
           setOnLongClickListener {
             copyToClipboard()
             true
@@ -91,7 +91,7 @@ class OverlayDetailBottomSheetDialogFragment :
             scale(0.8f) {
               append(" Min: ")
             }
-            append(packageInfo.applicationInfo.minSdkVersion.toString())
+            append(packageInfo.applicationInfo?.minSdkVersion.toString())
             scale(0.8f) {
               append(" Compile: ")
             }
@@ -99,7 +99,7 @@ class OverlayDetailBottomSheetDialogFragment :
             scale(0.8f) {
               append(" Size: ")
             }
-            val apkSize = FileUtils.getFileSize(packageInfo.applicationInfo.sourceDir)
+            val apkSize = FileUtils.getFileSize(packageInfo.applicationInfo!!.sourceDir)
             append(Formatter.formatFileSize(context, apkSize))
           }
         }

@@ -4,31 +4,43 @@ import android.graphics.Color
 import android.view.HapticFeedbackConstants
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import coil.load
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.api.ApiManager
 import com.absinthe.libchecker.compat.VersionCompat
 import com.absinthe.libchecker.constant.AndroidVersions
 import com.absinthe.libchecker.constant.GlobalValues
+import com.absinthe.libchecker.database.Repositories
+import com.absinthe.libchecker.database.entity.LCItem
 import com.absinthe.libchecker.databinding.FragmentPieChartBinding
+import com.absinthe.libchecker.features.chart.BaseChartDataSource
 import com.absinthe.libchecker.features.chart.BaseVariableChartDataSource
 import com.absinthe.libchecker.features.chart.ChartViewModel
 import com.absinthe.libchecker.features.chart.IChartDataSource
 import com.absinthe.libchecker.features.chart.IntegerFormatter
+import com.absinthe.libchecker.features.chart.impl.AABChartDataSource
 import com.absinthe.libchecker.features.chart.impl.ABIChartDataSource
+import com.absinthe.libchecker.features.chart.impl.CompileApiChartDataSource
+import com.absinthe.libchecker.features.chart.impl.DetailedABIChartDataSource
 import com.absinthe.libchecker.features.chart.impl.JetpackComposeChartDataSource
 import com.absinthe.libchecker.features.chart.impl.KotlinChartDataSource
 import com.absinthe.libchecker.features.chart.impl.MarketDistributionChartDataSource
 import com.absinthe.libchecker.features.chart.impl.MinApiChartDataSource
+import com.absinthe.libchecker.features.chart.impl.PageSize16KBChartDataSource
 import com.absinthe.libchecker.features.chart.impl.TargetApiChartDataSource
+import com.absinthe.libchecker.features.chart.ui.view.ChartDetailItemView
+import com.absinthe.libchecker.features.chart.ui.view.ExpandingView
 import com.absinthe.libchecker.features.chart.ui.view.MarketDistributionDashboardView
 import com.absinthe.libchecker.services.WorkerService
 import com.absinthe.libchecker.ui.base.BaseFragment
+import com.absinthe.libchecker.ui.base.SaturationTransformation
 import com.absinthe.libchecker.utils.OsUtils
+import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
+import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.github.mikephil.charting.animation.Easing
 import com.github.mikephil.charting.charts.Chart
@@ -39,10 +51,12 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
-import com.google.android.material.button.MaterialButtonToggleGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.core.util.ClipboardUtils
@@ -50,15 +64,40 @@ import timber.log.Timber
 
 class ChartFragment :
   BaseFragment<FragmentPieChartBinding>(),
-  OnChartValueSelectedListener,
-  MaterialButtonToggleGroup.OnButtonCheckedListener {
+  OnChartValueSelectedListener {
 
   private val viewModel: ChartViewModel by activityViewModels()
   private lateinit var chartView: ViewGroup
+  private lateinit var allLCItemsStateFlow: StateFlow<List<LCItem>>
   private var dataSource: IChartDataSource<*>? = null
   private var dialog: ClassifyBottomSheetDialogFragment? = null
   private var setDataJob: Job? = null
-  private var distributionDashboardView: MarketDistributionDashboardView? = null
+
+  private enum class ChartType {
+    ABI,
+    KOTLIN,
+    TARGET_SDK,
+    MIN_SDK,
+    COMPILE_SDK,
+    JETPACK_COMPOSE,
+    MARKET_DISTRIBUTION,
+    AAB,
+    SUPPORT_16KB
+  }
+
+  private val chartTypeToIconRes = mapOf(
+    ChartType.ABI to (R.drawable.ic_logo to R.string.abi_string),
+    ChartType.KOTLIN to (com.absinthe.lc.rulesbundle.R.drawable.ic_lib_kotlin to R.string.kotlin_string),
+    ChartType.TARGET_SDK to (R.drawable.ic_label_target_sdk to R.string.target_sdk_string),
+    ChartType.MIN_SDK to (R.drawable.ic_label_min_sdk to R.string.min_sdk_string),
+    ChartType.COMPILE_SDK to (R.drawable.ic_label_compile_sdk to R.string.compile_sdk_string),
+    ChartType.JETPACK_COMPOSE to (com.absinthe.lc.rulesbundle.R.drawable.ic_lib_jetpack_compose to R.string.jetpack_compose_short),
+    ChartType.MARKET_DISTRIBUTION to (com.absinthe.lc.rulesbundle.R.drawable.ic_lib_android to R.string.android_dist_label),
+    ChartType.AAB to (R.drawable.ic_aab to R.string.app_bundle),
+    ChartType.SUPPORT_16KB to (R.drawable.ic_16kb_align to R.string.lib_detail_dialog_title_16kb_page_size)
+  )
+  private var currentChartType = ChartType.ABI
+  private var currentExpandingView: ExpandingView? = null
 
   override fun init() {
     val featureInitialized = !WorkerService.initializingFeatures
@@ -66,67 +105,112 @@ class ChartFragment :
     chartView = generatePieChartView()
     binding.root.addView(chartView, -1)
 
-    binding.buttonsGroup.apply {
-      addOnButtonCheckedListener(this@ChartFragment)
-      check(R.id.btn_abi)
-    }
-    binding.btnKotlin.isVisible = featureInitialized
-    binding.btnCompose.isVisible = featureInitialized
-
-    viewModel.apply {
-      dbItems.observe(viewLifecycleOwner) {
-        if (featureInitialized) {
-          setDataJob?.cancel()
-          setDataJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(2000)
-            withContext(Dispatchers.Main) {
-              setData()
-            }
+    chartTypeToIconRes.forEach {
+      if (it.key == ChartType.KOTLIN || it.key == ChartType.JETPACK_COMPOSE) {
+        if (!featureInitialized) {
+          return
+        }
+      }
+      val view = ExpandingView(requireContext()).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).also {
+          it.setMargins(4.dp, 4.dp, 4.dp, 4.dp)
+        }
+        setContent(it.value.first, getString(it.value.second))
+        setOnClickListener { _ ->
+          if (currentExpandingView == this) {
+            return@setOnClickListener
+          }
+          setData(allLCItemsStateFlow.value, it.key)
+          doOnMainThreadIdle {
+            currentExpandingView?.toggle()
+            toggle()
+            currentExpandingView = this
           }
         }
       }
+      if (currentExpandingView == null) {
+        currentExpandingView = view
+        view.toggle()
+      }
+      binding.featuresContainer.addView(view)
+    }
+
+    lifecycleScope.launch {
+      allLCItemsStateFlow = Repositories.lcRepository.allLCItemsFlow.onEach {
+        if (featureInitialized) {
+          setDataJob?.cancel()
+          setDataJob = lifecycleScope.launch(Dispatchers.IO) {
+            if (dataSource != null) {
+              delay(2000)
+            }
+            withContext(Dispatchers.Main) {
+              if (dataSource == null) {
+                setData(it, ChartType.ABI)
+              } else {
+                setData(it)
+              }
+            }
+          }
+        }
+      }.stateIn(this)
     }
     lifecycleScope.launch {
-      lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+      lifecycle.repeatOnLifecycle(Lifecycle.State.CREATED) {
         viewModel.isLoading.collect { isLoading ->
           if (isLoading) {
             binding.progressHorizontal.show()
           } else {
             binding.progressHorizontal.hide()
+            applyDashboardView()
           }
         }
       }
     }
     lifecycleScope.launch {
-      lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+      lifecycle.repeatOnLifecycle(Lifecycle.State.CREATED) {
         viewModel.distributionLastUpdateTime.collect { time ->
-          if (distributionDashboardView?.parent != null) {
-            distributionDashboardView?.subtitle?.text = getString(R.string.android_dist_subtitle_format, time)
+          (binding.dashboardContainer.getChildAt(0) as? MarketDistributionDashboardView)?.let {
+            it.subtitle.text = getString(R.string.android_dist_subtitle_format, time)
           }
         }
       }
     }
-
-    GlobalValues.isShowSystemApps.observe(viewLifecycleOwner) {
-      setData()
+    lifecycleScope.launch {
+      lifecycle.repeatOnLifecycle(Lifecycle.State.CREATED) {
+        viewModel.detailAbiSwitch.collect {
+          if (currentChartType == ChartType.ABI && this@ChartFragment::allLCItemsStateFlow.isInitialized) {
+            setData(allLCItemsStateFlow.value)
+          }
+        }
+      }
     }
   }
 
-  private fun setData() {
+  private fun setData(items: List<LCItem>, chartType: ChartType = currentChartType) {
     context ?: return
+    currentChartType = chartType
     viewModel.setLoading(true)
-    applyDistributionDashboardView()
+    viewModel.setDetailAbiSwitchVisibility(chartType == ChartType.ABI)
     if (chartView.parent != null) {
       binding.root.removeView(chartView)
     }
 
-    when (binding.buttonsGroup.checkedButtonId) {
-      R.id.btn_abi -> setChartData(::generatePieChartView, ::ABIChartDataSource)
-      R.id.btn_kotlin -> setChartData(::generatePieChartView, ::KotlinChartDataSource)
-      R.id.btn_target_api -> setChartData(::generateBarChartView, ::TargetApiChartDataSource)
-      R.id.btn_min_sdk -> setChartData(::generateBarChartView, ::MinApiChartDataSource)
-      R.id.btn_compose -> setChartData(::generatePieChartView, ::JetpackComposeChartDataSource)
-      R.id.btn_distribution -> setChartData(::generateBarChartView, ::MarketDistributionChartDataSource)
+    when (chartType) {
+      ChartType.ABI -> {
+        if (GlobalValues.isDetailedAbiChart) {
+          setChartData(::generateBarChartView) { DetailedABIChartDataSource(items) }
+        } else {
+          setChartData(::generatePieChartView) { ABIChartDataSource(items) }
+        }
+      }
+      ChartType.KOTLIN -> setChartData(::generatePieChartView) { KotlinChartDataSource(items) }
+      ChartType.TARGET_SDK -> setChartData(::generateBarChartView) { TargetApiChartDataSource(items) }
+      ChartType.MIN_SDK -> setChartData(::generateBarChartView) { MinApiChartDataSource(items) }
+      ChartType.COMPILE_SDK -> setChartData(::generateBarChartView) { CompileApiChartDataSource(items) }
+      ChartType.JETPACK_COMPOSE -> setChartData(::generatePieChartView) { JetpackComposeChartDataSource(items) }
+      ChartType.MARKET_DISTRIBUTION -> setChartData(::generateBarChartView) { MarketDistributionChartDataSource(items) }
+      ChartType.AAB -> setChartData(::generatePieChartView) { AABChartDataSource(items) }
+      ChartType.SUPPORT_16KB -> setChartData(::generatePieChartView) { PageSize16KBChartDataSource(items) }
     }
   }
 
@@ -154,47 +238,7 @@ class ChartFragment :
       return
     }
 
-    if (OsUtils.atLeastR()) {
-      chartView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-    }
-
-    dialog = ClassifyBottomSheetDialogFragment()
-    viewModel.filteredList.postValue(emptyList())
-
-    lifecycleScope.launch(Dispatchers.IO) {
-      viewModel.dialogTitle.postValue(dataSource?.getLabelByXValue(requireContext(), h.x.toInt()).orEmpty())
-      viewModel.filteredList.postValue(dataSource?.getListByXValue(h.x.toInt()) ?: emptyList())
-
-      if (dataSource is TargetApiChartDataSource || dataSource is MinApiChartDataSource) {
-        val index = (dataSource as BaseVariableChartDataSource<*>).getListKeyByXValue(h.x.toInt())
-        viewModel.androidVersion.postValue(AndroidVersions.versions.find { it.first == index })
-      } else {
-        viewModel.androidVersion.postValue(null)
-      }
-
-      withContext(Dispatchers.Main) {
-        activity?.let { activity ->
-          dialog?.also {
-            it.setOnDismiss {
-              this@ChartFragment.dialog = null
-              (chartView as? Chart<*>)?.highlightValue(null)
-            }
-            it.show(
-              activity.supportFragmentManager,
-              ClassifyBottomSheetDialogFragment::class.java.name
-            )
-          }
-        }
-      }
-    }
-  }
-
-  override fun onButtonChecked(
-    group: MaterialButtonToggleGroup?,
-    checkedId: Int,
-    isChecked: Boolean
-  ) {
-    setData()
+    applyItemSelect(h.x.toInt())
   }
 
   private fun generatePieChartView(): PieChart {
@@ -273,28 +317,81 @@ class ChartFragment :
     }
   }
 
-  private fun applyDistributionDashboardView() {
-    if (binding.buttonsGroup.checkedButtonId == R.id.btn_distribution) {
-      if (distributionDashboardView?.parent == null) {
-        distributionDashboardView = MarketDistributionDashboardView(requireContext()).apply {
-          layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-          )
-          chip.setOnClickListener {
-            ClipboardUtils.put(context, ApiManager.ANDROID_VERSION_DISTRIBUTION_URL)
-            VersionCompat.showCopiedOnClipboardToast(context)
-          }
-          if (viewModel.distributionLastUpdateTime.value.isNotEmpty()) {
-            subtitle.text = getString(R.string.android_dist_subtitle_format, viewModel.distributionLastUpdateTime.value)
-          }
+  private fun applyDashboardView() {
+    binding.dashboardContainer.removeAllViews()
+    if (currentChartType == ChartType.MARKET_DISTRIBUTION) {
+      val view = MarketDistributionDashboardView(requireContext()).apply {
+        layoutParams = ViewGroup.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT,
+          ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        chip.setOnClickListener {
+          ClipboardUtils.put(context, ApiManager.ANDROID_VERSION_DISTRIBUTION_URL)
+          VersionCompat.showCopiedOnClipboardToast(context)
         }
-        binding.root.addView(distributionDashboardView, 1)
+        if (viewModel.distributionLastUpdateTime.value.isNotEmpty()) {
+          subtitle.text = getString(
+            R.string.android_dist_subtitle_format,
+            viewModel.distributionLastUpdateTime.value
+          )
+        }
       }
-    } else {
-      distributionDashboardView?.let {
-        binding.root.removeView(it)
-        distributionDashboardView = null
+      binding.dashboardContainer.addView(view)
+    } else if (dataSource is BaseChartDataSource && chartView is PieChart) {
+      (dataSource as BaseChartDataSource).let {
+        it.getChartSourceItems().forEach { (key, value) ->
+          val view = ChartDetailItemView(requireContext()).apply {
+            layoutParams = ViewGroup.LayoutParams(
+              ViewGroup.LayoutParams.MATCH_PARENT,
+              ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            container.apply {
+              icon.load(value.iconRes) {
+                if (value.isGrayIcon) {
+                  transformations(SaturationTransformation(0f))
+                }
+              }
+              labelName.text = it.getLabelByXValue(context, key)
+              // noinspection SetTextI18n
+              count.text = value.data.size.toString()
+              setOnClickListener {
+                if (value.data.isNotEmpty()) {
+                  applyItemSelect(key)
+                }
+              }
+            }
+          }
+          binding.dashboardContainer.addView(view)
+        }
+      }
+    }
+  }
+
+  private fun applyItemSelect(x: Int) {
+    if (OsUtils.atLeastR()) {
+      chartView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+    }
+
+    dialog = ClassifyBottomSheetDialogFragment().also {
+      it.setTitle(dataSource?.getLabelByXValue(requireContext(), x).orEmpty())
+      it.setList(dataSource?.getListByXValue(x) ?: emptyList())
+
+      if (dataSource is TargetApiChartDataSource || dataSource is MinApiChartDataSource) {
+        val index = (dataSource as BaseVariableChartDataSource<*>).getListKeyByXValue(x)
+        it.setAndroidVersionLabel(AndroidVersions.versions.find { node -> node.version == index })
+      } else {
+        it.setAndroidVersionLabel(null)
+      }
+
+      activity?.let { activity ->
+        it.setOnDismiss {
+          this@ChartFragment.dialog = null
+          (chartView as? Chart<*>)?.highlightValue(null)
+        }
+        it.show(
+          activity.supportFragmentManager,
+          ClassifyBottomSheetDialogFragment::class.java.name
+        )
       }
     }
   }
